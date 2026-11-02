@@ -1,190 +1,183 @@
-# 🧹 AutoPurge Pro
+# AutoPurge Pro
 
-<div align="center">
+<p align="center">
+  <strong>面向 Android Root 环境的存储清理模块</strong><br>
+  WebUI 可视化管理 · 自定义清理规则 · 定时清理 · 历史记录
+</p>
 
-### Android 智能清理模块 · WebUI 增强版
+<p align="center">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.3.1-blue">
+  <img alt="Module ID" src="https://img.shields.io/badge/module%20id-Clear__Rubbish-informational">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Android-green">
+</p>
 
-**让 Android 清理更简单，让设备管理更直观。**
+AutoPurge Pro 是一个运行于 Android Root 环境的模块，提供黑名单、白名单、MT 管理器联动清理、定时清理、日志维护以及 WebUI 可视化管理功能。你可以通过 WebUI 查看运行状态、调整清理规则、设置定时任务，并追溯清理记录。
 
-![Version](https://img.shields.io/badge/Version-v2.2.0-blue?style=for-the-badge)
-![Platform](https://img.shields.io/badge/Platform-Android-green?style=for-the-badge&logo=android)
-![Permission](https://img.shields.io/badge/Permission-Root-orange?style=for-the-badge)
-![Author](https://img.shields.io/badge/Author-liancan-purple?style=for-the-badge)
+> **当前版本：v2.3.1**  
+> 模块 ID：`Clear_Rubbish`（升级时保持不变）
 
-[📥 下载模块](https://github.com/yunyu614/AutoPurge-Pro/releases/latest) · [📖 项目主页](https://github.com/yunyu614/AutoPurge-Pro) · [💬 问题反馈](https://github.com/yunyu614/AutoPurge-Pro/issues)
-
-</div>
-
----
-
-## 📖 一、项目简介
-
-**AutoPurge Pro** 是一款面向 Android Root 用户的智能清理模块。
-
-项目以自动化清理、可视化管理和灵活配置为核心，通过独立的 WebUI 管理界面，将清理规则、黑白名单、定时任务及运行记录集中管理。
-
-不再需要频繁手动修改配置文件，通过直观的操作界面即可管理相关功能。
-
-我们希望让 Android 设备的日常清理更加简单、高效、直观，同时给予用户更灵活的自定义管理能力。
-
-## ✨ 二、核心功能
+## 功能概览
 
 | 功能 | 说明 |
 |---|---|
-| 🖥️ WebUI 管理 | 独立可视化管理界面 |
-| 🎨 主题切换 | 支持深色、浅色主题 |
-| 🌐 多语言 | 支持中文、英文切换 |
-| 🛡️ 黑白名单 | 自定义清理规则与保护路径 |
-| 📊 数据统计 | 查看累计清理统计及释放空间 |
-| 🕘 历史记录 | 追溯历史清理文件及相关记录 |
-| ⏰ 定时任务 | 支持双时段定时清理配置 |
-| ⚙️ 功能总开关 | 统一控制自动清理任务 |
+| 立即全量清理 | 从 WebUI 手动启动全量清理任务；v2.3.1 调整为后台执行并轮询任务状态，减少长任务造成的界面等待 |
+| MT 清理 | 提供单独的 MT 清理入口，并可通过 MT 管理器联动触发清理 |
+| 黑名单规则 | 自定义需要清理的文件或目录路径 |
+| 白名单保护 | 配置需要保护、避免被清理的路径 |
+| MT 清理名单 | 单独管理 MT 联动清理所使用的规则 |
+| 双时段定时清理 | 可配置每天或指定星期的两个执行时间 |
+| 日志维护 | 可设置 `Clear.log` 的清理阈值 |
+| 统计看板 | 查看累计清理文件数、目录数、最近清理时间等统计信息 |
+| 历史记录 | 查询清理过的文件与目录路径，并查看实时运行日志 |
+| 功能总开关 | 统一控制后台守护与自动清理相关功能 |
+| WebUI 个性化 | 支持主题、语言及底部导航栏相关设置 |
 
-## 🖼️ 三、WebUI 界面展示
+## 下载
 
-### 1. 📊 运行总览
+前往 [Releases](https://github.com/yunyu614/AutoPurge-Pro/releases) 下载最新版本的 ZIP 安装包。
 
-查看模块运行状态、清理统计及相关数据，快速了解模块运行情况。
+建议优先下载带有版本号的正式 Release 附件，不要直接下载仓库源码压缩包作为模块安装包。
 
-![运行总览](screenshots/01-dashboard.jpg)
+## 安装与升级
 
-### 2. 🛡️ 黑白名单管理
+1. 在安装或升级前，备份现有模块配置及自定义规则。
+2. 从 [Releases 页面](https://github.com/yunyu614/AutoPurge-Pro/releases) 下载模块 ZIP。
+3. 打开设备所使用的 Root 模块管理器，选择从本地安装模块并选中 ZIP 文件。
+4. 按安装器提示完成安装；如管理器要求重启，按提示重启设备。
+5. 打开模块 WebUI，检查模块状态及清理规则是否正常加载。
 
-自定义清理规则与保护路径，根据个人需求调整清理范围。
+### 从 v2.3.0 升级到 v2.3.1
 
-![黑白名单管理](screenshots/02-rules.jpg)
+- 模块 ID 仍为 `Clear_Rubbish`，用于保持原模块身份并支持覆盖升级。
+- 升级前仍建议备份配置目录及个人规则。
+- 升级后先检查 WebUI，再进行一次手动清理测试。
 
-### 3. 🎨 外观与界面设置
+## WebUI 使用说明
 
-支持主题切换、中英文切换及界面相关设置，打造更符合个人习惯的操作体验。
+WebUI 主要包含以下页面：
 
-![外观与设置](screenshots/03-settings.jpg)
+### 1. 概览与统计
 
-### 4. 🕘 历史记录追溯
+- 查看模块运行状态、后台服务状态及清理统计。
+- 使用「立即执行全量清理」启动完整清理任务。
+- 使用「仅执行 MT 清理」单独运行 MT 清理。
+- 管理模块总开关、定时清理、MT 联动清理和日志清理等开关。
 
-查看历史清理记录，追溯相关文件路径，方便了解清理执行情况。
+**提示：** 全量清理可能需要一定时间。v2.3.1 已调整任务启动与状态查询方式，但不同设备的文件数量、存储介质和 Root 环境会影响实际耗时。任务运行期间不要反复点击启动按钮。
 
-![历史记录](screenshots/04-history.jpg)
+### 2. 黑白名单管理
 
-### 5. ⏰ 定时清理配置
+- **黑名单：** 添加需要纳入清理范围的文件或目录路径。
+- **白名单：** 添加必须保护的文件或目录路径。
+- **MT 清理名单：** 单独维护 MT 管理器联动清理规则。
 
-支持双时段定时任务配置，根据设备使用习惯安排自动清理时间。
+修改规则前，请确认路径拼写及目标范围。通配符或目录级规则可能覆盖大量文件；不确定时先不要加入清理名单。建议先备份重要数据，并从明确的缓存目录开始测试。
 
-![定时清理](screenshots/05-schedule.jpg)
+### 3. 定时设置
 
----
+可配置两个执行时段及对应星期。保存后检查设置是否已生效。默认配置为每天 `00:00` 和 `12:00`，可在 WebUI 中按需调整。
 
-## 📱 四、安装指南
+### 4. 清理历史与运行日志
 
-### 环境要求
+可查看历史清理文件、目录路径及运行日志，并按页面提供的功能清理历史记录或重置累计统计。清除历史记录不等同于恢复已删除文件。
 
-| 项目 | 要求 |
-|---|---|
-| 运行平台 | Android |
-| 权限要求 | Root |
-| 安装格式 | ZIP 模块 |
-| 管理工具 | KernelSU / APatch 等兼容管理器 |
+### 5. 应用设置
 
-### 安装步骤
+可调整 WebUI 外观、语言及导航偏好，并查看版本信息。设置页提供特别赞助商「爱玩机工具箱」入口：<https://doc.byyoung.top/>。
 
-**① 下载模块**
+## 配置文件与目录
 
-前往 [GitHub Releases](https://github.com/yunyu614/AutoPurge-Pro/releases/latest) 下载最新版本 ZIP 安装包。
-
-**② 打开 Root 管理器**
-
-进入 KernelSU、APatch 或其他兼容的模块管理器。
-
-**③ 选择本地安装**
-
-找到下载的 AutoPurge Pro ZIP 文件，选择安装。
-
-**④ 完成安装**
-
-按照管理器提示完成安装及必要的后续操作。
-
-**⑤ 进入 WebUI**
-
-安装完成后，通过模块提供的 WebUI 入口进入管理界面。
-
----
-
-## ⚙️ 五、配置说明
-
-模块配置目录：
+模块的用户配置目录：
 
 ```text
 /sdcard/Android/Clear/清理垃圾/
 ```
 
-首次使用建议：
+安装包内包含的主要配置文件：
 
-- 检查黑名单与白名单配置。
-- 确认清理规则及目标路径。
-- 根据个人习惯设置定时任务。
-- 查看清理统计及历史记录。
-- 确认配置无误后再启用自动清理。
+```text
+Configuration_File/
+├── 配置.conf
+├── 名单配置/
+│   ├── 黑名单.conf
+│   ├── 白名单.conf
+│   └── MT.conf
+└── 自定义定时设置/
+    ├── 定时设置.conf
+    └── Timing_Settings.sh
+```
 
-## ⚠️ 六、使用须知
+主要配置项示例：
 
-1. 使用前请确认设备已经获取 Root 权限。
-2. 清理规则会影响文件删除范围，请谨慎配置。
-3. 不建议将重要数据目录加入清理范围。
-4. 修改配置后建议检查规则是否正确。
-5. 重要数据请提前备份，避免误操作造成数据丢失。
-6. 不同 Android 系统版本及 Root 环境可能存在兼容性差异。
+```ini
+master_switch=true
+timed_cleaning=true
+mt_cleaning=true
+log_cleaning=true
+log_purge_size=2M
+```
 
----
+| 配置项 | 含义 |
+|---|---|
+| `master_switch` | 模块功能总开关 |
+| `timed_cleaning` | 是否启用定时清理 |
+| `mt_cleaning` | 是否启用 MT 管理器联动清理 |
+| `log_cleaning` | 是否启用日志清理 |
+| `log_purge_size` | `Clear.log` 日志清理阈值；配置文件注释列出的可选值为 `512K`、`1M`、`2M`、`5M`、`10M` |
 
-## 🚀 七、版本更新
+**请勿在不了解规则含义时直接批量替换配置文件。** 修改前建议备份整个配置目录。
 
-### v2.2.0 · WebUI 增强版
+## 版本更新
 
-本次版本主要更新：
+### v2.3.1
 
-- 🖥️ 全新 WebUI 管理界面
-- 🎨 增加深色、浅色主题切换
-- 🌐 增加中英文界面切换
-- 🛡️ 增强黑名单与白名单管理
-- 📊 增加累计清理统计看板
-- 🕘 增加历史清理文件追溯
-- ⏰ 增加双时段定时清理配置
-- ⚙️ 增加清理功能总开关
+- 优化「立即执行全量清理」的任务执行方式，降低长时间同步等待对 WebUI 的影响。
+- 增加清理任务状态轮询。
+- 增加任务运行状态保护，降低重复启动清理任务的风险。
+- 调整清理结果数据输出，便于 WebUI 读取。
+- 保留模块 ID `Clear_Rubbish`。
 
----
+### v2.3.0
 
-## 📥 八、下载中心
+- 调整 WebUI 顶部栏，移除作者及 Root 连接状态标签。
+- 设置页新增「爱玩机工具箱」特别赞助商入口。
+- 更新界面版本显示。
+- 保留原模块 ID、配置目录及原有核心程序。
 
-<div align="center">
+更多历史记录请查看仓库中的 [CHANGELOG.md](CHANGELOG.md)。
 
-### AutoPurge Pro v2.2.0
+## 常见问题
 
-获取最新安装包及版本更新信息。
+### WebUI 打不开或状态显示异常怎么办？
 
-[![Download](https://img.shields.io/badge/下载-AutoPurge%20Pro%20v2.2.0-success?style=for-the-badge&logo=github)](https://github.com/yunyu614/AutoPurge-Pro/releases/latest)
+先确认模块已在 Root 管理器中启用，再尝试重新打开 WebUI。若仍异常，请提供设备系统版本、Root 方案、模块日志及 WebUI 报错信息。
 
-[查看全部历史版本](https://github.com/yunyu614/AutoPurge-Pro/releases)
+### 全量清理耗时较长怎么办？
 
-</div>
+清理耗时与规则数量、文件数量、存储读写速度及系统负载有关。v2.3.1 已优化前端等待方式；如果任务长时间没有结束，请检查运行日志，不要连续重复启动清理任务。
 
----
+### 升级后自定义规则会不会丢失？
 
-## 👨‍💻 九、作者信息
+本版本沿用原模块 ID 和既有配置目录设计，但不同安装管理器的覆盖升级行为可能不同。升级前请备份 `/sdcard/Android/Clear/清理垃圾/`。
 
-**Author：liancan**
+## 安全提示与免责声明
 
-项目地址：[yunyu614/AutoPurge-Pro](https://github.com/yunyu614/AutoPurge-Pro)
+- 清理操作可能造成文件删除或数据丢失。请确认清理规则及路径后再执行，并提前备份重要数据。
+- 不要将不熟悉的系统目录、应用数据目录或个人文件目录直接加入清理规则。
+- 本项目按当前提供的安装包与配置进行维护说明；不同 Android 版本、Root 管理器及设备环境下的表现可能不同。尚未验证的设备不应视为已兼容。
+- 自动化检查或语法检查不等于真机运行验证。遇到异常请先停用相关清理功能并保留日志。
+- 本 README 不构成数据安全保证。使用者应自行评估风险并承担使用清理功能所产生的后果。
+- 本次维护版本沿用既有核心二进制程序；核心程序的上游来源、授权条款及再分发权限应以对应上游项目的 LICENSE 和版权声明为准。请勿据此 README 推断本项目已获得未核实的授权。
 
-如果你觉得项目对你有帮助，欢迎点亮 ⭐ Star 支持项目持续完善。
+## 反馈与交流
 
-![GitHub Stars](https://img.shields.io/github/stars/yunyu614/AutoPurge-Pro?style=social)
+如遇到问题或希望提出改进建议，请通过仓库 [Issues](https://github.com/yunyu614/AutoPurge-Pro/issues) 提交，并尽量附上：
 
----
+- 模块版本及安装来源；
+- Android 系统版本与设备型号；
+- Root 管理器及版本；
+- 复现步骤、报错截图和相关日志（提交前请删除个人隐私信息）。
 
-<div align="center">
+## 特别鸣谢
 
-**AutoPurge Pro · Make Android Cleaner**
-
-*© 2026 liancan*
-
-</div>
+感谢 **爱玩机工具箱** 对项目的支持：<https://doc.byyoung.top/>。
