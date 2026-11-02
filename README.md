@@ -2,24 +2,22 @@
 
 <div align="center">
 
-# AutoPurge Pro
-
 ### Android 智能清理模块 · WebUI 增强版
 
 **让 Android 清理更简单，让设备管理更直观。**
 
 ![Version](https://img.shields.io/badge/Version-v2.2.0-blue?style=for-the-badge)
-![Android](https://img.shields.io/badge/Platform-Android-green?style=for-the-badge&logo=android)
-![Root](https://img.shields.io/badge/Permission-Root-orange?style=for-the-badge)
+![Platform](https://img.shields.io/badge/Platform-Android-green?style=for-the-badge&logo=android)
+![Permission](https://img.shields.io/badge/Permission-Root-orange?style=for-the-badge)
 ![Author](https://img.shields.io/badge/Author-liancan-purple?style=for-the-badge)
 
-[项目主页](https://github.com/yunyu614/AutoPurge-Pro) · [版本下载](https://github.com/yunyu614/AutoPurge-Pro/releases) · [问题反馈](https://github.com/yunyu614/AutoPurge-Pro/issues)
+[📥 下载模块](https://github.com/yunyu614/AutoPurge-Pro/releases/latest) · [📖 项目主页](https://github.com/yunyu614/AutoPurge-Pro) · [💬 问题反馈](https://github.com/yunyu614/AutoPurge-Pro/issues)
 
 </div>
 
 ---
 
-## 📖 项目介绍
+## 📖 一、项目简介
 
 **AutoPurge Pro** 是一款面向 Android Root 用户的智能清理模块。
 
@@ -27,100 +25,56 @@
 
 不再需要频繁手动修改配置文件，通过直观的操作界面即可管理相关功能。
 
-无论是日常缓存管理，还是自定义清理任务，都希望让整个过程更加简单、清晰、可控。
+我们希望让 Android 设备的日常清理更加简单、高效、直观，同时给予用户更灵活的自定义管理能力。
 
-## ✨ 核心功能
+## ✨ 二、核心功能
 
-<table>
-<tr>
-<td width="50%">
+| 功能 | 说明 |
+|---|---|
+| 🖥️ WebUI 管理 | 独立可视化管理界面 |
+| 🎨 主题切换 | 支持深色、浅色主题 |
+| 🌐 多语言 | 支持中文、英文切换 |
+| 🛡️ 黑白名单 | 自定义清理规则与保护路径 |
+| 📊 数据统计 | 查看累计清理统计及释放空间 |
+| 🕘 历史记录 | 追溯历史清理文件及相关记录 |
+| ⏰ 定时任务 | 支持双时段定时清理配置 |
+| ⚙️ 功能总开关 | 统一控制自动清理任务 |
 
-### 🖥️ WebUI 管理面板
+## 🖼️ 三、WebUI 界面展示
 
-- 可视化管理界面
-- 集中展示主要功能
-- 方便查看运行情况
-- 简化日常配置操作
+### 1. 📊 运行总览
 
-</td>
-<td width="50%">
+查看模块运行状态、清理统计及相关数据，快速了解模块运行情况。
 
-### 🎨 个性化主题
+![运行总览](screenshots/01-dashboard.jpg)
 
-- 深色 / 浅色主题
-- 中文 / 英文切换
-- 根据使用习惯调整界面
-- 更舒适的操作体验
+### 2. 🛡️ 黑白名单管理
 
-</td>
-</tr>
-<tr>
-<td>
+自定义清理规则与保护路径，根据个人需求调整清理范围。
 
-### 🛡️ 黑白名单管理
+![黑白名单管理](screenshots/02-rules.jpg)
 
-- 自定义清理黑名单
-- 配置白名单保护规则
-- 灵活调整清理范围
-- 降低误清理风险
+### 3. 🎨 外观与界面设置
 
-</td>
-<td>
+支持主题切换、中英文切换及界面相关设置，打造更符合个人习惯的操作体验。
 
-### 📊 清理统计看板
+![外观与设置](screenshots/03-settings.jpg)
 
-- 累计清理数据
-- 文件及目录统计
-- 释放空间相关统计
-- 直观了解清理情况
+### 4. 🕘 历史记录追溯
 
-</td>
-</tr>
-<tr>
-<td>
+查看历史清理记录，追溯相关文件路径，方便了解清理执行情况。
 
-### 🕘 历史记录追溯
+![历史记录](screenshots/04-history.jpg)
 
-- 查看历史清理记录
-- 追溯清理文件路径
-- 了解任务执行情况
-- 方便排查清理问题
+### 5. ⏰ 定时清理配置
 
-</td>
-<td>
+支持双时段定时任务配置，根据设备使用习惯安排自动清理时间。
 
-### ⏰ 定时清理
-
-- 支持双时段配置
-- 自定义清理时间
-- 后台自动执行任务
-- 减少重复手动操作
-
-</td>
-</tr>
-</table>
-
-### ⚙️ 全局功能控制
-
-提供清理功能总开关，方便统一管理自动清理任务，根据实际使用需求开启或关闭相关功能。
+![定时清理](screenshots/05-schedule.jpg)
 
 ---
 
-## 🖼️ 界面展示
-
-<div align="center">
-
-**AutoPurge Pro WebUI**
-
-</div>
-
-> 界面截图展示区：后续添加主页、清理设置、统计看板等真实运行截图。
-
-建议截图尺寸统一，优先使用完整 WebUI 界面，方便用户直观了解实际效果。
-
----
-
-## 📱 安装指南
+## 📱 四、安装指南
 
 ### 环境要求
 
@@ -128,18 +82,18 @@
 |---|---|
 | 运行平台 | Android |
 | 权限要求 | Root |
-| 安装方式 | ZIP 模块安装 |
+| 安装格式 | ZIP 模块 |
 | 管理工具 | KernelSU / APatch 等兼容管理器 |
 
 ### 安装步骤
 
 **① 下载模块**
 
-进入 GitHub Releases 页面，下载最新版本 ZIP 安装包。
+前往 [GitHub Releases](https://github.com/yunyu614/AutoPurge-Pro/releases/latest) 下载最新版本 ZIP 安装包。
 
-**② 打开模块管理器**
+**② 打开 Root 管理器**
 
-进入 KernelSU、APatch 或其他兼容的 Root 模块管理器。
+进入 KernelSU、APatch 或其他兼容的模块管理器。
 
 **③ 选择本地安装**
 
@@ -155,7 +109,7 @@
 
 ---
 
-## 🛠️ 配置说明
+## ⚙️ 五、配置说明
 
 模块配置目录：
 
@@ -163,73 +117,67 @@
 /sdcard/Android/Clear/清理垃圾/
 ```
 
-建议首次使用时：
+首次使用建议：
 
-- 检查黑名单和白名单配置。
+- 检查黑名单与白名单配置。
 - 确认清理规则及目标路径。
-- 根据使用习惯设置定时任务。
-- 观察清理统计及历史记录。
+- 根据个人习惯设置定时任务。
+- 查看清理统计及历史记录。
 - 确认配置无误后再启用自动清理。
 
----
+## ⚠️ 六、使用须知
 
-## ⚠️ 使用须知
-
-- 使用前请确认设备已经获取 Root 权限。
-- 清理规则会影响文件删除范围，请谨慎配置。
-- 不建议将重要数据目录加入清理范围。
-- 修改配置后建议检查规则是否正确。
-- 重要数据请提前备份，避免误操作造成数据丢失。
-- 不同 Android 系统版本及 Root 环境可能存在兼容性差异。
+1. 使用前请确认设备已经获取 Root 权限。
+2. 清理规则会影响文件删除范围，请谨慎配置。
+3. 不建议将重要数据目录加入清理范围。
+4. 修改配置后建议检查规则是否正确。
+5. 重要数据请提前备份，避免误操作造成数据丢失。
+6. 不同 Android 系统版本及 Root 环境可能存在兼容性差异。
 
 ---
 
-## 📦 版本更新
+## 🚀 七、版本更新
 
-### 🚀 v2.2.0 · WebUI 增强版
+### v2.2.0 · WebUI 增强版
 
 本次版本主要更新：
 
 - 🖥️ 全新 WebUI 管理界面
-- 🎨 深色 / 浅色主题切换
-- 🌐 中英文界面切换
-- 🛡️ 黑名单与白名单管理
-- 📊 累计清理统计看板
-- 🕘 历史清理文件追溯
-- ⏰ 双时段定时清理配置
-- ⚙️ 清理功能总开关
+- 🎨 增加深色、浅色主题切换
+- 🌐 增加中英文界面切换
+- 🛡️ 增强黑名单与白名单管理
+- 📊 增加累计清理统计看板
+- 🕘 增加历史清理文件追溯
+- ⏰ 增加双时段定时清理配置
+- ⚙️ 增加清理功能总开关
 
 ---
 
-## 📥 下载中心
+## 📥 八、下载中心
 
 <div align="center">
 
 ### AutoPurge Pro v2.2.0
 
-前往 GitHub Releases 获取安装包。
+获取最新安装包及版本更新信息。
 
-[![Download](https://img.shields.io/badge/Download-AutoPurge%20Pro-v2.2.0-success?style=for-the-badge&logo=github)](https://github.com/yunyu614/AutoPurge-Pro/releases/latest)
+[![Download](https://img.shields.io/badge/下载-AutoPurge%20Pro%20v2.2.0-success?style=for-the-badge&logo=github)](https://github.com/yunyu614/AutoPurge-Pro/releases/latest)
+
+[查看全部历史版本](https://github.com/yunyu614/AutoPurge-Pro/releases)
 
 </div>
 
 ---
 
-## 👨‍💻 作者信息
+## 👨‍💻 九、作者信息
 
-<div align="center">
+**Author：liancan**
 
-**liancan**
+项目地址：[yunyu614/AutoPurge-Pro](https://github.com/yunyu614/AutoPurge-Pro)
 
-AutoPurge Pro
+如果你觉得项目对你有帮助，欢迎点亮 ⭐ Star 支持项目持续完善。
 
-一个持续完善的 Android 智能清理项目。
-
-如果你觉得项目对你有帮助，欢迎点亮 ⭐ Star 支持。
-
-[![GitHub Stars](https://img.shields.io/github/stars/yunyu614/AutoPurge-Pro?style=social)](https://github.com/yunyu614/AutoPurge-Pro/stargazers)
-
-</div>
+![GitHub Stars](https://img.shields.io/github/stars/yunyu614/AutoPurge-Pro?style=social)
 
 ---
 
@@ -237,6 +185,6 @@ AutoPurge Pro
 
 **AutoPurge Pro · Make Android Cleaner**
 
-<sub>© 2026 liancan. All rights reserved.</sub>
+*© 2026 liancan*
 
 </div>
