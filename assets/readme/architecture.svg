@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+<title id="title">AutoPurge Pro System Architecture</title><desc id="desc">Conceptual architecture diagram of WebUI, configuration, background services, scheduled tasks and logs.</desc>
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0b1225"/><stop offset="1" stop-color="#20204b"/></linearGradient><linearGradient id="card" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#1d2a50"/><stop offset="1" stop-color="#18213f"/></linearGradient><linearGradient id="line" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#60a5fa"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>
+<rect width="1200" height="620" rx="26" fill="url(#bg)"/>
+<text x="56" y="66" fill="#fff" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="30" font-weight="800">⚙️ 系统功能架构</text>
+<text x="56" y="98" fill="#a5b4fc" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="15">从可视化管理到后台执行 · 模块职责清晰 · 配置统一管理</text>
+<!-- top UI -->
+<rect x="390" y="132" width="420" height="90" rx="18" fill="url(#card)" stroke="#818cf8" stroke-width="1.5"/>
+<rect x="420" y="154" width="48" height="46" rx="12" fill="#3730a3"/><text x="444" y="184" fill="#fff" text-anchor="middle" font-family="Arial,sans-serif" font-size="22">▦</text>
+<text x="490" y="169" fill="#fff" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="20" font-weight="700">WebUI 管理中心</text><text x="490" y="194" fill="#a5b4fc" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="12">数据概览 · 功能开关 · 规则配置 · 系统设置</text>
+<!-- connectors -->
+<path d="M600 222V264M190 264H1010M190 264V292M463 264V292M737 264V292M1010 264V292" fill="none" stroke="url(#line)" stroke-width="3" stroke-linecap="round"/>
+<g fill="#a5b4fc"><circle cx="600" cy="264" r="5"/><circle cx="190" cy="264" r="5"/><circle cx="463" cy="264" r="5"/><circle cx="737" cy="264" r="5"/><circle cx="1010" cy="264" r="5"/></g>
+<!-- modules -->
+<g>
+ <rect x="70" y="292" width="240" height="132" rx="16" fill="url(#card)" stroke="#3b82f6" stroke-opacity=".65"/><text x="94" y="328" fill="#93c5fd" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="18" font-weight="700">🧹 清理服务</text><text x="94" y="360" fill="#dbeafe" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="13">清理任务执行</text><text x="94" y="386" fill="#a5b4fc" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="12">按启用状态与规则运行</text>
+ <rect x="343" y="292" width="240" height="132" rx="16" fill="url(#card)" stroke="#8b5cf6" stroke-opacity=".65"/><text x="367" y="328" fill="#c4b5fd" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="18" font-weight="700">📁 文件整理</text><text x="367" y="360" fill="#ede9fe" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="13">扫描 · 分类 · 归档</text><text x="367" y="386" fill="#c4b5fd" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="12">来源与目标路径可配置</text>
+ <rect x="617" y="292" width="240" height="132" rx="16" fill="url(#card)" stroke="#14b8a6" stroke-opacity=".65"/><text x="641" y="328" fill="#5eead4" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="18" font-weight="700">🛡️ 规则引擎</text><text x="641" y="360" fill="#ccfbf1" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="13">黑名单 · 白名单 · MT 规则</text><text x="641" y="386" fill="#99f6e4" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="12">控制扫描与处理范围</text>
+ <rect x="890" y="292" width="240" height="132" rx="16" fill="url(#card)" stroke="#f59e0b" stroke-opacity=".65"/><text x="914" y="328" fill="#fcd34d" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="18" font-weight="700">⏱️ 定时调度</text><text x="914" y="360" fill="#fef3c7" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="13">Cron 计划任务</text><text x="914" y="386" fill="#fde68a" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="12">按配置触发后台操作</text>
+</g>
+<!-- lower shared services -->
+<path d="M190 424V458H600V480M463 424V458M737 424V458M1010 424V458H600" fill="none" stroke="#6476b5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="180" y="480" width="390" height="86" rx="15" fill="#172746" stroke="#60a5fa" stroke-opacity=".6"/><text x="210" y="515" fill="#bfdbfe" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="17" font-weight="700">🗂️ 配置与路径管理</text><text x="210" y="541" fill="#9fb2d7" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="12">功能开关 · 扫描路径 · 归档目标 · 规则数据</text>
+<rect x="630" y="480" width="390" height="86" rx="15" fill="#172746" stroke="#a78bfa" stroke-opacity=".6"/><text x="660" y="515" fill="#ddd6fe" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="17" font-weight="700">📋 运行状态与日志</text><text x="660" y="541" fill="#b8addb" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="12">任务执行记录 · 分类日志 · 服务状态</text>
+<path d="M600 566V588H1100" fill="none" stroke="#6476b5" stroke-width="1.5" stroke-dasharray="5 6"/>
+<text x="1140" y="592" fill="#7f8db4" text-anchor="end" font-family="Arial,sans-serif" font-size="11">CONCEPTUAL OVERVIEW · 逻辑示意图</text>
+</svg>
