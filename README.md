@@ -1,6 +1,10 @@
 <!-- AutoPurge Pro README -->
 
 <div align="center">
+  <img src="assets/readme/autopurge-hero.svg" alt="AutoPurge Pro 项目品牌横幅" width="100%">
+</div>
+
+<div align="center">
 
 # 🧹 AutoPurge Pro
 
@@ -97,6 +101,12 @@
 
 ## 🖥️ WebUI 页面结构
 
+<div align="center">
+  <img src="assets/readme/webui-overview.svg" alt="AutoPurge Pro WebUI 功能界面示意图" width="100%">
+</div>
+
+<sub>注：上图为 README 展示用的界面概念示意，不是当前版本的实机截图；具体界面以安装后的实际显示为准。</sub>
+
 v4.2.1 对页面布局和信息层级进行了整理，主要管理区域如下：
 
 | 页面 | 主要内容 |
@@ -107,6 +117,16 @@ v4.2.1 对页面布局和信息层级进行了整理，主要管理区域如下�
 | **04 · ⚙️ 设置中心** | 功能介绍、服务配置、外观设置、定时任务与分类日志 |
 
 > 💡 **界面设计方向：** 首页以数据为主；功能开关集中展示；路径默认折叠，点击后再查看完整内容，减少长路径对页面布局的占用。
+
+---
+
+## 🧩 系统功能架构
+
+<div align="center">
+  <img src="assets/readme/architecture.svg" alt="AutoPurge Pro 系统功能架构图" width="100%">
+</div>
+
+<sub>注：架构图用于说明功能模块之间的逻辑关系，不代表所有内部实现细节。</sub>
 
 ---
 
