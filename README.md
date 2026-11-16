@@ -16,7 +16,7 @@
     <img src="https://img.shields.io/badge/Android-Root-3c9b87?style=for-the-badge&logo=android&logoColor=white" alt="Android Root">
     <img src="https://img.shields.io/badge/KernelSU-适配方向-1686a8?style=for-the-badge" alt="KernelSU">
     <img src="https://img.shields.io/badge/WebUI-可视化管理-8069cf?style=for-the-badge" alt="WebUI">
-    <img src="https://img.shields.io/badge/Version-4.4.1-5478e8?style=for-the-badge" alt="Version 4.3.0">
+    <img src="https://img.shields.io/badge/Version-4.4.1-5478e8?style=for-the-badge" alt="Version 4.4.1">
   </p>
 
   <p>
@@ -221,8 +221,6 @@ AutoPurge Pro 涉及 Root 权限及文件操作。为了降低误操作和长任
 - 🎨 合并 CSS 历史叠加层，移除卡片高成本模糊效果，降低 WebUI 渲染开销。
 - 🧩 清理前端死代码，拆分主题/语言更新流程，补齐开关中文提示、统计重置和动态版本显示。
 - 🔒 保持 Main.sh、service.sh、action.sh、uninstall.sh、五个二进制及 Configuration_File 配置模板不变，便于覆盖升级并保留原有配置与统计。
-
-### <img src="https://img.shields.io/badge/v4.3.0-UI%20%26%20Performance-5478e8?style=flat-square" alt="v4.3.0">
 
 ### <img src="https://img.shields.io/badge/v4.3.0-UI%20%26%20Performance-5478e8?style=flat-square" alt="v4.3.0">
 
