@@ -1,5 +1,10 @@
 # AutoPurge Pro v4.4.1
 
+- 版本号：`4.4.1`
+- versionCode：`441`
+- 正式发布： [GitHub Release v4.4.1](https://github.com/yunyu614/AutoPurge-Pro/releases/tag/v4.4.1)
+- 安装包：`AutoPurge_Pro_v4.4.1.zip`
+
 ## 重要修复：安装向导音量键识别
 
 - 修复一次物理按压音量键导致安装向导前两个问题被同时作答的问题。
