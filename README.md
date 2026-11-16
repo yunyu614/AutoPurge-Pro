@@ -16,7 +16,7 @@
     <img src="https://img.shields.io/badge/Android-Root-3c9b87?style=for-the-badge&logo=android&logoColor=white" alt="Android Root">
     <img src="https://img.shields.io/badge/KernelSU-适配方向-1686a8?style=for-the-badge" alt="KernelSU">
     <img src="https://img.shields.io/badge/WebUI-可视化管理-8069cf?style=for-the-badge" alt="WebUI">
-    <img src="https://img.shields.io/badge/Version-4.3.0-5478e8?style=for-the-badge" alt="Version 4.3.0">
+    <img src="https://img.shields.io/badge/Version-4.4.1-5478e8?style=for-the-badge" alt="Version 4.3.0">
   </p>
 
   <p>
@@ -208,6 +208,21 @@ AutoPurge Pro 涉及 Root 权限及文件操作。为了降低误操作和长任
 ---
 
 ## 🆕 更新记录
+
+### <img src="https://img.shields.io/badge/v4.4.1-Installer%20%26%20Stability-5478e8?style=flat-square" alt="v4.4.1">
+
+**v4.4.1 · 安装向导修复与底层稳定性优化**
+
+- 🔊 修复安装向导音量键一次按压被重复消费的问题，按完整按压周期识别选择。
+- 🛟 增加 getevent 不可用或连续读取失败时的默认配置兜底，避免向导无限等待。
+- 🧭 重写安装向导说明，按文件整理、APK 清理、模块残留的顺序逐项确认。
+- 📦 增加解压结果校验，核心文件缺失时中止安装并提示重新下载。
+- ⚙️ 重构 autopurge_ctl.sh，修复任务状态码问题，增加清理目录锁、配置自愈、JSON 转义及 version 命令。
+- 🎨 合并 CSS 历史叠加层，移除卡片高成本模糊效果，降低 WebUI 渲染开销。
+- 🧩 清理前端死代码，拆分主题/语言更新流程，补齐开关中文提示、统计重置和动态版本显示。
+- 🔒 保持 Main.sh、service.sh、action.sh、uninstall.sh、五个二进制及 Configuration_File 配置模板不变，便于覆盖升级并保留原有配置与统计。
+
+### <img src="https://img.shields.io/badge/v4.3.0-UI%20%26%20Performance-5478e8?style=flat-square" alt="v4.3.0">
 
 ### <img src="https://img.shields.io/badge/v4.3.0-UI%20%26%20Performance-5478e8?style=flat-square" alt="v4.3.0">
 
