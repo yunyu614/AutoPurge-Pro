@@ -1,5 +1,34 @@
 # AutoPurge Pro Changelog
 
+# AutoPurge Pro v4.4.2
+
+## 重点修复：WebUI 误报“Root 桥接不可用”
+
+- 根因：首页渲染函数末尾调用了不存在的 `applyTheme()`（实际函数名为 `applyThemeOnly()`），异常被包在“解析状态 JSON”的 `try` 中，于是被误报成“模块状态读取失败，请确认 Root WebUI 桥接可用”。
+- 修复渲染调用；状态读取、JSON 解析与界面渲染分开处理，界面异常不再伪装成桥接故障。
+- 新增启动时的 Root 桥接探测，区分无桥接（预览模式）、MMRL 未授权 Shell、Root 权限不可用、模块文件缺失、命令超时/执行失败，并在页面顶部显示可操作横幅。
+- 兼容 KernelSU / KernelSU Next / APatch / MMRL / WebUI X；同时兼容异步回调与同步 `exec` 实现。
+- 所有 Root 命令统一注入 `PATH=/system/bin:...`，避免管理器执行环境缺少 PATH 时 `sh: not found`。
+- 通过 `ksu.moduleInfo()` 自动纠正模块目录；控制脚本缺失时直接提示重新安装。
+- 新增「重试」「复制诊断」按钮，诊断包含桥接类型、errno、stdout/stderr。
+
+## 新增：自定义清理间隔
+
+- 定时方式新增「按间隔」：每 N 分钟（10–1440）/ 小时（1–720）/ 天（1–30）。
+- 间隔模式由独立守护进程 `bin/interval_daemon.sh` 按“上次计划时间 + 间隔”排期，避免 crond 的 `*/N` 在跨小时、跨天时出现 5/5/5/5/4 这类不等间隔。
+- 下次执行时间持久化在 `自定义定时设置/interval.state`，重启后继续原计划；修改间隔从当前时间重新计时。
+- 设置页提供 30 分钟、1/6/12 小时、2/7 天快捷预设，并显示约每天执行次数。
+- 「每天固定时间」模式保留原 crond 实现；旧配置自动补齐 `Set_Mode`、`Set_Interval`、`Set_Interval_Unit`，升级不覆盖已有时间与规则。
+
+## 底层优化
+
+- `autopurge_ctl.sh status` 改为一次扫描完成三个守护进程检测，减少多次 `pgrep` 全表扫描。
+- 状态 JSON 增加 `schedule.mode`、`schedule.interval`、`schedule.next_run_epoch`、`schedule.scheduler_running` 与 `daemons.interval`。
+- 状态读取超时 12s → 20s；控制脚本输出使用宽松 JSON 解析，容忍日志噪声。
+- 间隔守护的 PID 校验基于 `/proc/<pid>/cmdline`；停止时只结束 `sleep` 子进程，不打断正在执行的清理任务；执行前先写入下次计划，避免清理途中重启后重复补跑。
+- 仓库新增 `source/` 完整模块源码目录。
+
+
 # AutoPurge Pro v4.4.1
 
 ## 重要修复：安装向导音量键识别

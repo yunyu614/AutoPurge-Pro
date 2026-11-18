@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="transparent" media="(prefers-color-scheme: light)" />
+  <title>AutoPurge Pro</title>
+  <script>
+    (function () {
+      try {
+        var prefs = JSON.parse(localStorage.getItem('autopurge_pro_ui_v400') || localStorage.getItem('autopurge_pro_ui_v320') || localStorage.getItem('autopurge_pro_ui_v300') || '{}');
+        var theme = prefs.theme || 'auto';
+        if (theme === 'auto') {
+          var isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+        } else {
+          document.documentElement.dataset.theme = theme === 'monet' ? 'light' : theme;
+          document.documentElement.dataset.palette = prefs.palette || 'blue';
+        }
+      } catch (_) {
+        document.documentElement.dataset.theme = 'light';
+        document.documentElement.dataset.palette = 'blue';
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand-wrap">
+      <div class="brand-logo">AP</div>
+      <div>
+        <div class="brand-title">AutoPurge Pro <span class="version-tag">v4.4.2</span></div>
+        <div class="brand-sub"><span>轻量 · 安全 · 智能存储管理</span></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <div id="bridgeBanner" class="bridge-banner warn" hidden>
+      <div class="bridge-banner-icon">!</div>
+      <div class="bridge-banner-body">
+        <strong id="bridgeTitle"></strong>
+        <p id="bridgeDetail"></p>
+      </div>
+      <div class="bridge-banner-actions">
+        <button class="btn btn-sm btn-outline" onclick="retryBridge()">重试</button>
+        <button class="btn btn-sm btn-outline" onclick="copyBridgeDiagnostics()">复制诊断</button>
+      </div>
+    </div>
+
+    <!-- TAB 1: 首页看板 -->
+    <section id="tab-dashboard" class="tab-pane active">
+      <div class="card hero-card">
+        <div class="hero-top">
+          <div class="hero-status-info">
+            <h2 id="masterStatusTitle">🟢 模块运行中</h2>
+            <p id="masterStatusDesc">守护服务状态与运行概况</p>
+          </div>
+          <button class="btn btn-primary btn-hero-action" id="btnDashClean" onclick="triggerCleanup('all', 'btnDashClean')">立即清理</button>
+        </div>
+        <div class="daemon-bar">
+          <div class="daemon-pill"><span id="dotMain" class="dot on"></span>主控守护</div>
+          <div class="daemon-pill"><span id="dotCron" class="dot on"></span>定时器</div>
+          <div class="daemon-pill"><span id="dotSmart" class="dot on"></span>MT 监测</div>
+          <div class="daemon-pill"><span id="dotLog" class="dot on"></span>日志守护</div>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-label"><span>累计清理文件</span><span class="tag tag-file">Files</span></div>
+          <div class="stat-value text-blue" id="statTotalFiles">0</div>
+          <div class="stat-sub" id="statLastFiles">上次清理: 0 个文件</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label"><span>累计清理目录</span><span class="tag tag-dir">Dirs</span></div>
+          <div class="stat-value text-amber" id="statTotalDirs">0</div>
+          <div class="stat-sub" id="statLastDirs">上次清理: 0 个目录</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label"><span>累计释放空间</span><span class="tag tag-mt">Space</span></div>
+          <div class="stat-value text-emerald" id="statTotalFreed">0 MB</div>
+          <div class="stat-sub" id="statTotalRuns">累计执行: 0 次</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label"><span>最近清理时间</span><span class="tag tag-time">Time</span></div>
+          <div class="stat-value stat-value-sm text-purple" id="statLastTime">尚未执行</div>
+          <div class="stat-sub" id="statCronSummary">每日定时: --:--</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">存储空间</div>
+          <span class="card-subtitle" id="storagePercentText">已用 --%</span>
+        </div>
+        <div class="storage-bar-bg">
+          <div id="storageBarFill" class="storage-bar-fill"></div>
+        </div>
+        <div class="storage-legend">
+          <span id="storageUsedText">已用: -- GB</span>
+          <span id="storageAvailText">可用: -- GB</span>
+        </div>
+        <div class="rule-badges">
+          <div class="rule-badge-item"><div class="num" id="badgeBlCount">0</div><div class="lbl">黑名单规则</div></div>
+          <div class="rule-badge-item"><div class="num" id="badgeWlCount">0</div><div class="lbl">白名单保护</div></div>
+          <div class="rule-badge-item"><div class="num" id="badgeMtCount">0</div><div class="lbl">MT清理规则</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: 清理与整理（合并页） -->
+    <section id="tab-clean" class="tab-pane">
+      <div class="card">
+        <div class="feature-section-head">
+          <div>
+            <div class="card-title">清理功能</div>
+            <span class="card-subtitle">管理自动任务范围，手动执行不受开关限制</span>
+          </div>
+          <label class="switch master-switch" title="清理自动任务总开关">
+            <input type="checkbox" id="swCleanupMaster" checked onchange="onCleanupMasterToggle(this.checked)" /><span class="slider"></span>
+          </label>
+        </div>
+        <div class="feature-master-hint">总开关一键启停下方全部自动任务；删除操作始终有预览确认。</div>
+
+        <div class="setting-item compact-setting">
+          <div class="setting-info"><h4>黑名单清理</h4><p>按黑名单路径清理缓存与残留目录</p></div>
+          <label class="switch"><input type="checkbox" id="swBlacklistClean" checked onchange="onToggleSwitch('blacklist_cleaning', this.checked)"/><span class="slider"></span></label>
+        </div>
+        <div class="setting-item compact-setting">
+          <div class="setting-info"><h4>MT 残留清理</h4><p>按 MT 名单处理回收站与临时文件</p></div>
+          <label class="switch"><input type="checkbox" id="swMt" checked onchange="onToggleSwitch('mt_cleaning', this.checked)"/><span class="slider"></span></label>
+        </div>
+        <div class="setting-item compact-setting">
+          <div class="setting-info"><h4>日志自动维护</h4><p>Clear.log 超过阈值后自动截断</p></div>
+          <label class="switch"><input type="checkbox" id="swLog" checked onchange="onToggleSwitch('log_cleaning', this.checked)"/><span class="slider"></span></label>
+        </div>
+        <div class="setting-item compact-setting">
+          <div class="setting-info"><h4>模块残留清理</h4><p>仅清理模块 .bak / .backup 备份文件</p></div>
+          <label class="switch"><input type="checkbox" id="swModResidue" onchange="onToggleSwitch('module_residue_cleaning', this.checked)"/><span class="slider"></span></label>
+        </div>
+        <div class="setting-item compact-setting">
+          <div class="setting-info"><h4>APK 自动清理</h4><p>删除下载与缓存目录中的安装包</p></div>
+          <label class="switch"><input type="checkbox" id="swApkClean" onchange="onToggleSwitch('apk_cleaning', this.checked)"/><span class="slider"></span></label>
+        </div>
+        <div class="setting-item compact-setting">
+          <div class="setting-info"><h4>定时清理</h4><p>按设置页的计划时间自动执行</p></div>
+          <label class="switch"><input type="checkbox" id="swTimed" checked onchange="onToggleSwitch('timed_cleaning', this.checked)"/><span class="slider"></span></label>
+        </div>
+
+        <div class="clean-action-panel">
+          <div class="clean-action-heading"><strong>手动执行</strong><span>立即清理一次黑名单与 MT 目标</span></div>
+          <div class="action-row clean-action-row">
+            <button class="btn btn-primary" id="btnCleanAll" onclick="triggerCleanup('all', 'btnCleanAll')">立即清理</button>
+            <button class="btn btn-outline" id="btnCleanMT" onclick="triggerCleanup('mt', 'btnCleanMT')">仅清理 MT</button>
+          </div>
+        </div>
+
+        <div class="feature-section-head section-gap">
+          <div>
+            <div class="card-title">文件整理</div>
+            <span class="card-subtitle">分类扫描 · 独立目录归档，不删除任何文件</span>
+          </div>
+          <label class="switch master-switch" title="自动归档总开关">
+            <input type="checkbox" id="swOrganizeMaster" onchange="onToggleSwitch('file_organize', this.checked)"/><span class="slider"></span>
+          </label>
+        </div>
+        <div class="feature-master-hint">关闭后停止自动归档；手动扫描和整理仍可单独操作。</div>
+        <div class="file-scan-grid">
+          <div class="scan-stat"><strong id="scanTotal">--</strong><span>待整理</span></div>
+          <div class="scan-stat"><strong id="scanImages">--</strong><span>图片</span></div>
+          <div class="scan-stat"><strong id="scanVideos">--</strong><span>视频</span></div>
+          <div class="scan-stat"><strong id="scanAudio">--</strong><span>音频</span></div>
+          <div class="scan-stat"><strong id="scanApks">--</strong><span>安装包</span></div>
+          <div class="scan-stat"><strong id="scanArchives">--</strong><span>压缩包</span></div>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-outline" id="btnScanFiles" onclick="scanUserFiles()">扫描文件</button>
+          <button class="btn btn-primary" id="btnOrganizeFiles" onclick="organizeUserFiles()">开始归档</button>
+        </div>
+        <div class="file-path-shortcut">
+          <span>扫描来源与归档目标可在规则中心自定义</span>
+          <button class="btn btn-outline btn-sm" onclick="switchTab('rules')">修改路径</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: 规则与路径（合并页） -->
+    <section id="tab-rules" class="tab-pane">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">规则与路径</div>
+            <div class="card-subtitle">名单规则 · 扫描来源 · 归档目标</div>
+          </div>
+        </div>
+
+        <details class="path-group rule-config-group">
+          <summary>黑白名单与 MT 规则 <span>点击展开编辑</span></summary>
+          <div class="rule-config-content">
+            <div class="rule-file-toolbar">
+              <span id="currentRuleFilePath">/sdcard/Android/Clear/清理垃圾/名单配置/黑名单.conf</span>
+              <button class="btn btn-sm btn-outline" id="btnToggleEditMode" onclick="toggleRuleEditMode()">📝 源码模式</button>
+            </div>
+            <div class="seg-control">
+              <button class="seg-btn active" id="segBtnBlacklist" onclick="switchRuleType('blacklist')">黑名单</button>
+              <button class="seg-btn" id="segBtnWhitelist" onclick="switchRuleType('whitelist')">白名单</button>
+              <button class="seg-btn" id="segBtnMtlist" onclick="switchRuleType('mtlist')">MT 名单</button>
+            </div>
+            <div id="visualRuleView">
+              <div class="rule-toolbar">
+                <input type="text" id="inpNewRulePath" class="input" placeholder="输入路径，如 /data/media/0/2345*" />
+                <button class="btn btn-primary btn-sm" onclick="addNewRuleItem()">+ 添加</button>
+              </div>
+              <div class="preset-chips" id="presetChipsBar">
+                <span class="chip" onclick="quickFillRule('/data/media/0/2345*')">+ 2345残留</span>
+                <span class="chip" onclick="quickFillRule('/data/media/0/Android/data/*/cache/*')">+ 应用Cache</span>
+                <span class="chip" onclick="quickFillRule('/data/media/0/Tencent/tbs_live_log/*')">+ TBS日志</span>
+                <span class="chip" onclick="quickFillRule('/data/media/0/DCIM/.thumbnails/*')">+ 缩略图缓存</span>
+              </div>
+              <div class="rule-toolbar">
+                <input type="text" id="inpSearchRule" class="input" placeholder="🔍 搜索当前名单..." oninput="renderVisualRuleList()" />
+              </div>
+              <div id="visualRuleList" class="rule-list-container"></div>
+            </div>
+            <div id="rawRuleView" style="display:none;">
+              <textarea id="rawRuleTextarea" class="textarea" spellcheck="false" placeholder="# 每行一条路径规则，支持 * 通配符..."></textarea>
+            </div>
+            <div class="rule-config-actions">
+              <span id="ruleCountSummary">共 0 条有效路径</span>
+              <div>
+                <button class="btn btn-outline btn-sm" onclick="reloadCurrentRuleFile()">重新读取</button>
+                <button class="btn btn-primary btn-sm" onclick="saveCurrentRuleFile()">保存修改</button>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <details class="path-group">
+          <summary>存储根目录 <span>当前：内部存储</span></summary>
+          <label class="root-path-label">存储根目录
+            <input class="input path-input" id="path_storage_root" value="/storage/emulated/0" />
+          </label>
+        </details>
+
+        <details class="path-group">
+          <summary>扫描来源路径 <span>5 项</span></summary>
+          <div class="path-config-grid">
+            <label>下载目录<input class="input path-input" id="path_download" value="/storage/emulated/0/Download" /></label>
+            <label>QQ 接收目录<input class="input path-input" id="path_qq" value="/storage/emulated/0/QQfile_recv" /></label>
+            <label>微信接收目录<input class="input path-input" id="path_wechat" value="/storage/emulated/0/WeChat" /></label>
+            <label>Telegram 目录<input class="input path-input" id="path_telegram" value="/storage/emulated/0/Telegram" /></label>
+            <label>蓝牙接收目录<input class="input path-input" id="path_bluetooth" value="/storage/emulated/0/Bluetooth" /></label>
+          </div>
+        </details>
+
+        <details class="path-group">
+          <summary>分类归档目标 <span>5 项</span></summary>
+          <div class="path-config-grid">
+            <label>图片归档目录<input class="input path-input" id="path_images" value="/storage/emulated/0/Pictures/AutoPurge" /></label>
+            <label>视频归档目录<input class="input path-input" id="path_videos" value="/storage/emulated/0/Movies/AutoPurge" /></label>
+            <label>音频归档目录<input class="input path-input" id="path_audio" value="/storage/emulated/0/Music/AutoPurge" /></label>
+            <label>安装包归档目录<input class="input path-input" id="path_apks" value="/storage/emulated/0/安装包/AutoPurge" /></label>
+            <label>模块包归档目录<input class="input path-input" id="path_modules" value="/storage/emulated/0/模块安装包/AutoPurge" /></label>
+          </div>
+        </details>
+
+        <div class="path-save-row">
+          <span class="inline-note">仅支持共享存储路径；建议归档目录保留 AutoPurge 子目录，避免与原文件混放。</span>
+          <button class="btn btn-primary" id="btnSavePaths" onclick="saveFilePaths()">保存路径</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: 日志中心 -->
+    <section id="tab-logs" class="tab-pane">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">功能日志</div>
+          <button class="btn btn-outline btn-sm" onclick="loadFeatureLogs()">刷新</button>
+        </div>
+        <div class="seg-control log-category-tabs">
+          <button class="seg-btn active" onclick="switchLogCategory('all',this)">全部</button>
+          <button class="seg-btn" onclick="switchLogCategory('clean',this)">清理</button>
+          <button class="seg-btn" onclick="switchLogCategory('mt',this)">MT</button>
+          <button class="seg-btn" onclick="switchLogCategory('files',this)">整理</button>
+          <button class="seg-btn" onclick="switchLogCategory('service',this)">服务</button>
+        </div>
+        <pre id="featureLogView" class="feature-log-view">点击刷新读取日志</pre>
+        <div class="action-row">
+          <button class="btn btn-outline" onclick="clearAllLogs()">清空日志</button>
+          <button class="btn btn-primary" onclick="switchTab('settings')">返回设置</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: 设置中心 -->
+    <section id="tab-settings" class="tab-pane">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">个性化外观</div>
+            <div class="card-subtitle">主题、颜色与导航布局</div>
+          </div>
+        </div>
+        <div class="setting-item setting-theme-mode">
+          <div class="setting-info"><h4>主题模式</h4><p>跟随系统或手动切换明暗</p></div>
+          <div class="choice-group theme-choices">
+            <button class="choice-btn" id="themeAuto" onclick="setTheme('auto')">跟随系统</button>
+            <button class="choice-btn" id="themeLight" onclick="setTheme('light')">浅色</button>
+            <button class="choice-btn" id="themeDark" onclick="setTheme('dark')">夜间</button>
+          </div>
+        </div>
+        <div class="setting-item palette-setting">
+          <div class="setting-info"><h4>主题色</h4><p>选择一套界面强调色</p></div>
+          <div class="palette-row" role="group" aria-label="莫奈配色">
+            <button class="palette-dot palette-blue" id="paletteBlue" aria-label="雾霾蓝" onclick="setPalette('blue')"></button>
+            <button class="palette-dot palette-sage" id="paletteSage" aria-label="薄荷绿" onclick="setPalette('sage')"></button>
+            <button class="palette-dot palette-lilac" id="paletteLilac" aria-label="薰衣草紫" onclick="setPalette('lilac')"></button>
+            <button class="palette-dot palette-rose" id="paletteRose" aria-label="樱花粉" onclick="setPalette('rose')"></button>
+            <button class="palette-dot palette-sand" id="paletteSand" aria-label="暖沙色" onclick="setPalette('sand')"></button>
+          </div>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info"><h4>底部导航</h4><p>选择悬浮或固定布局</p></div>
+          <div class="choice-group">
+            <button class="choice-btn" id="navFloating" onclick="setNavMode('floating')">悬浮底栏</button>
+            <button class="choice-btn" id="navTraditional" onclick="setNavMode('traditional')">固定底栏</button>
+          </div>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info"><h4>界面语言</h4><p>选择界面显示语言</p></div>
+          <div class="choice-group">
+            <button class="choice-btn" id="langZh" onclick="setLanguage('zh')">中文</button>
+            <button class="choice-btn" id="langEn" onclick="setLanguage('en')">English</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card schedule-card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">⏰ 定时与服务</div>
+            <div class="card-subtitle">每天固定时间或按间隔 · 服务开关 · 日志维护</div>
+          </div>
+        </div>
+        <div class="schedule-simple">
+          <div class="schedule-mode-row" role="group" aria-label="定时方式">
+            <button class="choice-btn" id="schedModeDaily" onclick="setScheduleMode('daily')">每天固定时间</button>
+            <button class="choice-btn" id="schedModeInterval" onclick="setScheduleMode('interval')">按间隔</button>
+          </div>
+          <div id="dailyScheduleBox">
+            <label for="dailyHour">每天执行时间</label>
+            <div class="schedule-time-row">
+              <select id="dailyHour" class="select"></select><span>:</span><select id="dailyMinute" class="select"></select>
+            </div>
+          </div>
+          <div id="intervalScheduleBox" hidden>
+            <label for="intervalValue">每隔多久执行</label>
+            <div class="schedule-interval-row">
+              <span>每</span>
+              <input id="intervalValue" class="input interval-input" type="number" min="1" max="720" step="1" inputmode="numeric" value="6" oninput="updateSimpleSchedulePreview()" />
+              <select id="intervalUnit" class="select" onchange="onIntervalUnitChange()">
+                <option value="minute">分钟</option>
+                <option value="hour">小时</option>
+                <option value="day">天</option>
+              </select>
+              <span>一次</span>
+            </div>
+            <div class="schedule-quick">
+              <button class="chip" type="button" onclick="setIntervalPreset(30,'minute')">30 分钟</button>
+              <button class="chip" type="button" onclick="setIntervalPreset(1,'hour')">1 小时</button>
+              <button class="chip" type="button" onclick="setIntervalPreset(6,'hour')">6 小时</button>
+              <button class="chip" type="button" onclick="setIntervalPreset(12,'hour')">12 小时</button>
+              <button class="chip" type="button" onclick="setIntervalPreset(2,'day')">2 天</button>
+              <button class="chip" type="button" onclick="setIntervalPreset(7,'day')">7 天</button>
+            </div>
+          </div>
+          <div class="schedule-summary" id="scheduleSummary">每天 --:-- 自动清理</div>
+          <button class="btn btn-primary btn-block" onclick="saveSimpleSchedule()">保存并应用定时设置</button>
+        </div>
+
+        <div class="card-divider"></div>
+
+        <div class="setting-item compact-setting">
+          <div class="setting-info"><h4>模块总开关</h4><p>关闭后停止守护与全部自动任务</p></div>
+          <label class="switch"><input type="checkbox" id="swMaster" checked onchange="onToggleSwitch('master_switch', this.checked)"/><span class="slider"></span></label>
+        </div>
+        <div class="setting-item compact-setting">
+          <div class="setting-info"><h4>日志保留阈值</h4><p id="curLogSizeDesc">当前 Clear.log: -- KB</p></div>
+          <select id="selLogSize" class="select" onchange="onChangeLogSize(this.value)">
+            <option value="512K">512 KB</option>
+            <option value="1M">1 MB</option>
+            <option value="2M">2 MB</option>
+            <option value="5M">5 MB</option>
+            <option value="10M">10 MB</option>
+          </select>
+        </div>
+        <div class="action-row service-action-row">
+          <button class="btn btn-outline" onclick="openLogs()">查看日志</button>
+          <button class="btn btn-outline" onclick="resetStats()">重置统计</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">功能说明</div></div>
+        <details class="path-group help-group">
+          <summary>各功能的作用与范围 <span>点击展开</span></summary>
+          <div class="feature-help-list">
+            <div><b>首页</b><span>查看存储空间、累计清理量、最近运行时间与服务状态。</span></div>
+            <div><b>黑名单清理</b><span>按黑名单路径规则清理指定缓存与残留；白名单路径优先保护，不应加入高风险目录。</span></div>
+            <div><b>MT 残留</b><span>按 MT 专用名单处理回收站、临时文件等目标，不默认扫描整个存储空间。</span></div>
+            <div><b>日志维护</b><span>后台监测模块日志大小，达到阈值后执行日志维护；详细记录集中在日志页。</span></div>
+            <div><b>模块残留</b><span>只处理明确的 .bak / .backup 备份文件，保留 modules_update 等待安装目录。</span></div>
+            <div><b>APK 清理</b><span>关闭时不自动删除安装包；开启后按后台扫描范围清理 APK，请谨慎启用。</span></div>
+            <div><b>文件管理</b><span>扫描下载、QQ、微信、Telegram 与蓝牙接收目录；图片、视频、音频、APK、模块包分别归档至独立子目录。</span></div>
+            <div><b>路径设置</b><span>自定义各来源目录与五类归档目标目录，修改后由后台扫描和整理任务读取。</span></div>
+            <div><b>规则中心</b><span>编辑黑名单、白名单、MT 专用规则；白名单用于排除保护，黑名单用于指定清理目标。</span></div>
+            <div><b>设置中心</b><span>管理主题、语言、底栏、定时计划、服务开关、日志与统计。</span></div>
+          </div>
+        </details>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">关于模块 / About</div></div>
+        <div class="about-row"><span>模块名称</span><strong>AutoPurge Pro</strong></div>
+        <div class="about-row"><span>当前版本</span><strong id="aboutVersion">v4.4.2</strong></div>
+        <div class="about-row"><span>作者</span><strong>liancan</strong></div>
+        <div class="about-row"><span>项目地址</span><a href="https://github.com/yunyu614/AutoPurge-Pro" target="_blank" rel="noopener">GitHub 项目主页 ↗</a></div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-item active" id="nav-dashboard" onclick="switchTab('dashboard')"><span class="nav-icon">⌂</span><span>首页</span></button>
+    <button class="nav-item" id="nav-clean" onclick="switchTab('clean')"><span class="nav-icon">✧</span><span>清理整理</span></button>
+    <button class="nav-item" id="nav-rules" onclick="switchTab('rules')"><span class="nav-icon">◇</span><span>规则中心</span></button>
+    <button class="nav-item" id="nav-settings" onclick="switchTab('settings')"><span class="nav-icon">⚙</span><span>设置中心</span></button>
+  </nav>
+
+  <div id="toastBox" class="toast-box">操作成功</div>
+  <script src="app.js"></script>
+</body>
+</html>

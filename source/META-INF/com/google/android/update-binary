@@ -1,0 +1,2 @@
+#!/bin/sh
+umask 000;OUTFD="${2}";ZIPFILE="${3}";mount '/data' 1>&2;test ! -f '/data/adb/magisk/util_functions.sh'&&exit||. '/data/adb/magisk/util_functions.sh';install_module;true;exit;

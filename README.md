@@ -16,7 +16,7 @@
     <img src="https://img.shields.io/badge/Android-Root-3c9b87?style=for-the-badge&logo=android&logoColor=white" alt="Android Root">
     <img src="https://img.shields.io/badge/KernelSU-适配方向-1686a8?style=for-the-badge" alt="KernelSU">
     <img src="https://img.shields.io/badge/WebUI-可视化管理-8069cf?style=for-the-badge" alt="WebUI">
-    <img src="https://img.shields.io/badge/Version-4.4.1-5478e8?style=for-the-badge" alt="Version 4.4.1">
+    <img src="https://img.shields.io/badge/Version-4.4.2-5478e8?style=for-the-badge" alt="Version 4.4.2">
   </p>
 
   <p>
@@ -37,6 +37,7 @@
 - [WebUI 页面](#-webui-页面)
 - [运行环境](#-运行环境)
 - [安装与升级](#-安装与升级)
+- [源码目录](#-源码目录)
 - [稳定性与安全说明](#-稳定性与安全说明)
 - [更新记录](#-更新记录)
 - [问题反馈](#-问题反馈)
@@ -96,7 +97,7 @@
   <tr>
     <td>
       <h3>⏱️ 定时任务</h3>
-      支持通过 Cron 调度自动化任务，具体执行情况以设备环境为准。
+      支持每天固定时间，或按分钟 / 小时 / 天自定义间隔执行。
     </td>
     <td>
       <h3>📊 数据统计</h3>
@@ -191,6 +192,26 @@
 
 ---
 
+## 🗂️ 源码目录
+
+自 v4.4.2 起，仓库的 [`source/`](source) 目录包含完整模块源码与构建所需文件，可直接用于审阅、二次开发或重新打包。
+
+| 路径 | 说明 |
+|:---|:---|
+| `source/module.prop` | 模块信息与版本号 |
+| `source/webroot/` | WebUI 前端（`index.html` / `app.js` / `style.css`） |
+| `source/bin/autopurge_ctl.sh` | 清理、统计与服务控制引擎 |
+| `source/bin/interval_daemon.sh` | 间隔调度守护进程（v4.4.2 新增） |
+| `source/Configuration_File/` | 配置模板与定时脚本 `Timing_Settings.sh` |
+| `source/Service_Config/` | 守护服务启动脚本 |
+| `source/Main.sh` / `service.sh` / `action.sh` / `uninstall.sh` | 模块入口脚本 |
+
+**重新打包：** 将 `source/` 目录内的文件（`module.prop` 位于 ZIP 根目录）压缩为 ZIP，即可通过 Root 管理器安装或作为 Release 附件发布。
+
+> `source/bin/` 中的 `MTClear`、`TimingClear`、`MainControl`、`SmartClear`、`LogClear` 为上游提供的预编译二进制文件；仓库暂未包含其 C++ 源码。
+
+---
+
 ## 🛡️ 稳定性与安全说明
 
 AutoPurge Pro 涉及 Root 权限及文件操作。为了降低误操作和长任务对界面的影响，项目持续优化任务执行与界面交互：
@@ -198,6 +219,7 @@ AutoPurge Pro 涉及 Root 权限及文件操作。为了降低误操作和长任
 - 长耗时文件扫描和归档采用后台任务执行方式，并通过状态查询反馈进度或结果。
 - 对重复触发的文件任务增加保护，避免同一操作被连续启动。
 - WebUI 对部分状态请求进行合并，减少重复请求。
+- 打开 WebUI 时先执行一次 Root 桥接探测，对无桥接、未授权 Shell、模块文件缺失和命令超时分别提示，不再把界面错误统一显示成“桥接失败”。
 - 视觉升级以 CSS 样式为主，不依赖大型动画框架。
 - 页面动效以轻量反馈为主，并支持减少动态效果的系统偏好。
 
@@ -208,6 +230,18 @@ AutoPurge Pro 涉及 Root 权限及文件操作。为了降低误操作和长任
 ---
 
 ## 🆕 更新记录
+
+### <img src="https://img.shields.io/badge/v4.4.2-Root%20Bridge%20%26%20Interval-5478e8?style=flat-square" alt="v4.4.2">
+
+**v4.4.2 · 修复 WebUI 误报桥接失败，新增自定义间隔清理**
+
+- 🐞 修复 `renderDashboardData()` 末尾调用不存在的 `applyTheme()` 导致渲染异常，并被错误提示为“模块状态读取失败，请确认 Root WebUI 桥接可用”的问题。
+- 🧩 新增 Root 桥接探测：兼容 KernelSU / KernelSU Next / APatch / MMRL / WebUI X，区分无桥接、MMRL 未授权 Shell、无 Root、模块文件缺失与命令超时，并在页面顶部提供「重试」「复制诊断」。
+- 🩺 所有 Root 命令统一注入系统 `PATH`，并通过 `ksu.moduleInfo()` 自动纠正模块目录，避免环境差异被误判成桥接故障。
+- ⏱️ 定时任务新增「按间隔」模式：每 N 分钟（10–1440）/ 小时（1–720）/ 天（1–30），提供 30 分钟、1/6/12 小时、2/7 天快捷预设。
+- 🧵 间隔模式由独立守护进程按“上次计划 + 间隔”排期，跨小时/跨天保持等间隔；下次执行时间持久化，重启后继续原计划。
+- ⚡ `status` 改为一次扫描进程，状态读取超时 12s → 20s，JSON 解析容错；旧版定时配置自动补齐字段且不覆盖原有时间。
+- 📦 仓库新增 `source/` 完整模块源码目录。
 
 ### <img src="https://img.shields.io/badge/v4.4.1-Installer%20%26%20Stability-5478e8?style=flat-square" alt="v4.4.1">
 
@@ -288,6 +322,7 @@ AutoPurge Pro 涉及 Root 权限及文件操作。为了降低误操作和长任
 - 🧩 AutoPurge Pro 模块版本
 - 🧭 出现问题的页面和具体操作步骤
 - 📋 相关日志或错误提示（请先移除个人隐私信息）
+- 🩺 WebUI 顶部诊断横幅内容（可点「复制诊断」，发送前请检查是否包含个人信息）
 
 请勿在公开反馈中上传账号密码、个人文件内容或其他敏感信息。
 

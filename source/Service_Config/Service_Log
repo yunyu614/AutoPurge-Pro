@@ -1,0 +1,8 @@
+#!/system/bin/sh
+# AutoPurge Pro service launcher
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)"
+MODDIR="$(dirname -- "$SCRIPT_DIR")"
+[ -n "$MODDIR" ] || exit 1
+export LD_LIBRARY_PATH="$MODDIR/lib:$LD_LIBRARY_PATH"
+[ -x "$MODDIR/bin/LogClear" ] || exit 1
+nohup "$MODDIR/bin/LogClear" >/dev/null 2>&1 &
