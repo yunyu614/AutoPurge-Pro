@@ -97,7 +97,7 @@ set_conf_val() {
             ;;
         *) return 1 ;;
     esac
-    tmp="$file.tmp.$"
+    tmp="$file.tmp.$$"
     awk -v key="$key" -v value="$value" '
         BEGIN { updated = 0 }
         $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
@@ -116,7 +116,7 @@ set_config_cmd() {
     local tmp key value changed=0
     [ "$#" -ge 3 ] || { echo '{"status":"error","message":"missing key/value"}'; return 2; }
     shift
-    tmp="$MAIN_CONF.batch.$"
+    tmp="$MAIN_CONF.batch.$$"
     cp "$MAIN_CONF" "$tmp" 2>/dev/null || { echo '{"status":"error","message":"cannot stage config"}'; return 1; }
     while [ "$#" -ge 2 ]; do
         key="$1"
@@ -551,7 +551,7 @@ organize_user_files() {
 scan_user_files() {
     # 独立临时文件避免并发任务互相覆盖；文件名含换行符不在当前格式支持范围内。
     local list_tmp source_tmp src f ext scan_rc=0
-    list_tmp="$CONFIG_DIR/.scan_list.$"
+    list_tmp="$CONFIG_DIR/.scan_list.$$"
     source_tmp="$CONFIG_DIR/.scan_sources.$$"
     : > "$list_tmp" || return 1
     organize_source_dirs > "$source_tmp" || { rm -f "$list_tmp" "$source_tmp"; return 1; }
