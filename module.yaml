@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/KernelSU-Modules/tools/main/schemas/module.schema.json
+schemaVersion: 1
+id: Clear_Rubbish
+name: AutoPurge Pro
+summary: 面向 Android Root 设备的智能清理、文件整理与自动维护模块，提供 WebUI 可视化管理、规则控制和定时任务。
+description: MODULE_DESCRIPTION.md
+homepage: https://github.com/yunyu614/AutoPurge-Pro
+support: https://github.com/yunyu614/AutoPurge-Pro/issues
+tags:
+  - android
+  - root
+  - cleaner
+  - file-management
+  - automation
+  - webui
+authors:
+  - name: liancan
+    url: https://github.com/yunyu614
