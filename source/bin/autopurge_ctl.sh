@@ -1316,6 +1316,6 @@ case "$1" in
         echo '{"status":"ok"}'
         ;;
     *)
-        echo "Usage: $0 {status|clean [auto|manual|mt]|start_clean [mode]|clean_status|scan_files|organize_files|file_task_status|apply|version|reset_stats|clear_logs}"
+        echo "Usage: $0 {status|clean [auto|manual|mt]|start_clean [mode]|clean_status|scan_files|organize_files|file_task_status|preview_cleanup|apply|version|reset_stats|clear_logs}"
         ;;
 esac
