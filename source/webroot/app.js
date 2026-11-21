@@ -1256,7 +1256,7 @@ const UI_EN = {
   "主控守护": "MainControl", "定时器": "Scheduler", "MT 监测": "MT Monitor", "日志守护": "Log Monitor",
   "🟢 模块运行中": "🟢 Module Running", "⏸️ 模块已暂停": "⏸️ Module Paused",
   "守护服务状态与运行概况": "Daemons & run overview", "自动服务运行正常": "Automatic services are running", "后台自动任务已暂停": "Automatic tasks are paused",
-  "累计清理文件": "Files cleaned", "累计清理目录": "Dirs cleaned", "累计释放空间": "Space freed", "最近清理时间": "Last cleanup",
+  "累计清理文件": "Files cleaned", "累计清理目录": "Dirs cleaned", "累计可用空间增加": "Observed space increase", "最近清理时间": "Last cleanup",
   "黑名单规则": "Blacklist rules", "白名单保护": "Whitelist", "MT清理规则": "MT rules",
   "存储空间": "Storage",
   "清理功能": "Cleanup", "黑名单清理": "Blacklist cleanup", "MT 残留清理": "MT residue cleanup",
