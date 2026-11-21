@@ -123,6 +123,18 @@ task_owner_alive() {
     case "$cmd" in *"$SCRIPT_PATH"*"$marker"*) return 0 ;; *) return 1 ;; esac
 }
 
+rotate_log_file() {
+    # $1=日志路径 $2=最大字节数；仅保留一个轮转副本，限制长期增长。
+    local file="$1" limit="$2" size
+    [ -f "$file" ] || return 0
+    size=$(wc -c < "$file" 2>/dev/null | tr -d ' ')
+    case "$size" in ''|*[!0-9]*) return 0 ;; esac
+    [ "$size" -gt "$limit" ] || return 0
+    mv -f "$file" "$file.1" 2>/dev/null || return 1
+    : > "$file"
+    chmod 644 "$file" 2>/dev/null
+}
+
 
 # ---------------------------------------------------------------- 环境初始化
 
@@ -634,6 +646,9 @@ EOF_STATS2
         rm -f "$stats_tmp"
     fi
     chmod 644 "$HISTORY_LOG" "$COUNTER_FILE" "$CLEAR_LOG" 2>/dev/null
+    # 清理完成并同步历史明细后再轮转，避免影响本轮日志差量解析。
+    rotate_log_file "$CLEAR_LOG" 1048576
+    rotate_log_file "$HISTORY_LOG" 1048576
     sync_module_prop
     printf '{"status":"ok","run_files":%s,"run_dirs":%s,"freed_kb":%s,"time":"%s"}\n' "$run_files" "$run_dirs" "$freed_kb" "$now_str"
 }
@@ -1134,7 +1149,29 @@ reset_stats() {
   "last_clean_time": "已重置"
 }
 EOF_RST
-    chmod 644 "$STATS_JSON" 2>/dev/null
+    local stats_tmp="$STATS_JSON.tmp.$"
+    cat > "$stats_tmp" <<'EOF_RST'
+{
+  "total_files": 0,
+  "total_dirs": 0,
+  "total_runs": 0,
+  "total_freed_kb": 0,
+  "last_run_files": 0,
+  "last_run_dirs": 0,
+  "last_run_freed_kb": 0,
+  "last_run_space_delta_kb": 0,
+  "space_metric": "filesystem_available_delta",
+  "last_clean_time": "已重置"
+}
+EOF_RST
+    if [ -s "$stats_tmp" ]; then
+        chmod 644 "$stats_tmp" 2>/dev/null
+        mv -f "$stats_tmp" "$STATS_JSON" || rm -f "$stats_tmp"
+    else
+        rm -f "$stats_tmp"
+        echo '{"status":"error","message":"stats write failed"}'
+        return 1
+    fi
     sync_module_prop
     echo '{"status":"ok"}'
 }
