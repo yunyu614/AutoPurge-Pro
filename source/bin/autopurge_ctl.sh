@@ -930,6 +930,58 @@ get_status_json() {
 EOF_STATUS
 }
 
+preview_cleanup() {
+    init_env
+    local list_tmp path size count=0 bytes=0 shown=0 first=1 kind download_path apk_sw residue_sw
+    list_tmp="$CONFIG_DIR/.preview_list.$"
+    : > "$list_tmp" || { echo '{"status":"error","message":"cannot create preview list"}'; return 1; }
+
+    apk_sw=$(get_conf_val "apk_cleaning" "$MAIN_CONF" "false")
+    residue_sw=$(get_conf_val "module_residue_cleaning" "$MAIN_CONF" "false")
+
+    if [ "$apk_sw" = "true" ]; then
+        download_path=$(get_path_val download "/storage/emulated/0/Download")
+        if [ -d "$download_path" ] && [ ! -L "$download_path" ]; then
+            find "$download_path" -maxdepth 2 -type f -name "*.apk" -print 2>/dev/null >> "$list_tmp"
+        fi
+    fi
+
+    if [ "$residue_sw" = "true" ] && [ -n "$MODDIR" ] && [ -d "$MODDIR" ] && [ ! -L "$MODDIR" ]; then
+        find "$MODDIR" -type f \( -name "*.bak" -o -name "*.backup" \) -print 2>/dev/null >> "$list_tmp"
+    fi
+
+    printf '{"status":"ok","scope":"shell_managed_only","count":'
+    count=$(wc -l < "$list_tmp" 2>/dev/null | tr -d ' ')
+    case "$count" in ''|*[!0-9]*) count=0 ;; esac
+    printf '%s,"bytes":' "$count"
+
+    # 逐项统计真实逻辑大小；JSON 明细最多返回 100 条，防止大目录撑爆 WebView。
+    while IFS= read -r path; do
+        [ -f "$path" ] && [ ! -L "$path" ] || continue
+        size=$(wc -c < "$path" 2>/dev/null | tr -d ' ')
+        case "$size" in ''|*[!0-9]*) size=0 ;; esac
+        bytes=$((bytes + size))
+    done < "$list_tmp"
+    printf '%s,"items":[' "$bytes"
+
+    while IFS= read -r path; do
+        [ -f "$path" ] && [ ! -L "$path" ] || continue
+        [ "$shown" -lt 100 ] || continue
+        size=$(wc -c < "$path" 2>/dev/null | tr -d ' ')
+        case "$size" in ''|*[!0-9]*) size=0 ;; esac
+        kind=apk
+        case "$path" in "$MODDIR"/*) kind=module_backup ;; esac
+        [ "$first" -eq 1 ] || printf ','
+        first=0
+        printf '{"type":"%s","path":"%s","size":%s}' "$kind" "$(json_escape "$path")" "$size"
+        shown=$((shown + 1))
+    done < "$list_tmp"
+    rm -f "$list_tmp"
+    printf '],"shown":%s,"truncated":' "$shown"
+    if [ "$count" -gt 100 ]; then printf 'true'; else printf 'false'; fi
+    printf ',"note":"仅预览 Shell 可识别的 APK 与本模块备份文件；TimingClear/MTClear 等闭源程序的清理目标不在预览范围内，且本命令不会删除文件。"}\n'
+}
+
 get_version_json() {
     local ver code
     ver=$(get_conf_val "version" "$MODDIR/module.prop" "unknown")
@@ -1202,6 +1254,9 @@ case "$1" in
         ;;
     apply)
         apply_services
+        ;;
+    preview_cleanup)
+        preview_cleanup
         ;;
     version)
         get_version_json
