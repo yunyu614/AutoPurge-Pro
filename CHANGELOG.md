@@ -1,4 +1,10 @@
-# AutoPurge Pro Changelog
+# AutoPurge Pro 项目变更记录
+
+AutoPurge Pro 是面向 Android Root 环境的清理、文件整理与自动维护项目，采用 Shell 后台任务与 WebUI 统一管理。本文记录项目功能、实现和兼容性随时间的演进；版本号仅标识发布节点。项目整体介绍请先阅读 [README](README.md)，当前可安装版本请查看 [GitHub Releases](https://github.com/yunyu614/AutoPurge-Pro/releases)。
+
+---
+
+## 变更记录
 
 # AutoPurge Pro v4.4.3
 
