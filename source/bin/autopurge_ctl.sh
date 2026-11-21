@@ -1136,20 +1136,12 @@ file_task_status() {
 
 reset_stats() {
     init_env
-    printf "目录=0\n文件=0\n" > "$COUNTER_FILE"
-    cat > "$STATS_JSON" <<'EOF_RST'
-{
-  "total_files": 0,
-  "total_dirs": 0,
-  "total_runs": 0,
-  "total_freed_kb": 0,
-  "last_run_files": 0,
-  "last_run_dirs": 0,
-  "last_run_freed_kb": 0,
-  "last_clean_time": "已重置"
-}
-EOF_RST
-    local stats_tmp="$STATS_JSON.tmp.$"
+    local counter_tmp="$COUNTER_FILE.tmp.$$" stats_tmp="$STATS_JSON.tmp.$$"
+    printf "目录=0\n文件=0\n" > "$counter_tmp" || {
+        rm -f "$counter_tmp"
+        echo '{"status":"error","message":"counter write failed"}'
+        return 1
+    }
     cat > "$stats_tmp" <<'EOF_RST'
 {
   "total_files": 0,
@@ -1164,14 +1156,22 @@ EOF_RST
   "last_clean_time": "已重置"
 }
 EOF_RST
-    if [ -s "$stats_tmp" ]; then
-        chmod 644 "$stats_tmp" 2>/dev/null
-        mv -f "$stats_tmp" "$STATS_JSON" || rm -f "$stats_tmp"
-    else
-        rm -f "$stats_tmp"
+    if [ ! -s "$stats_tmp" ]; then
+        rm -f "$counter_tmp" "$stats_tmp"
         echo '{"status":"error","message":"stats write failed"}'
         return 1
     fi
+    chmod 644 "$counter_tmp" "$stats_tmp" 2>/dev/null
+    mv -f "$counter_tmp" "$COUNTER_FILE" || {
+        rm -f "$counter_tmp" "$stats_tmp"
+        echo '{"status":"error","message":"counter replace failed"}'
+        return 1
+    }
+    mv -f "$stats_tmp" "$STATS_JSON" || {
+        rm -f "$stats_tmp"
+        echo '{"status":"error","message":"stats replace failed"}'
+        return 1
+    }
     sync_module_prop
     echo '{"status":"ok"}'
 }
