@@ -36,10 +36,31 @@ jobs:
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
           mkdir -p "$tmp/module" "$tmp/config/名单配置" "$tmp/config/自定义定时设置" "$tmp/storage/Download"
-          printf 'apk_cleaning=true\nmodule_residue_cleaning=true\n' > "$tmp/config/配置.conf"
+          printf 'apk_cleaning=false\nmodule_residue_cleaning=true\napk_cleaning=false\n' > "$tmp/config/配置.conf"
           printf 'storage_root=%s\ndownload=%s\n' "$tmp/storage" "$tmp/storage/Download" > "$tmp/config/FilePaths.conf"
           printf 'apk-data' > "$tmp/storage/Download/demo.apk"
           printf 'backup-data' > "$tmp/module/sample.bak"
+          AUTOPURGE_MODDIR="$tmp/module" AUTOPURGE_CONFIG_DIR="$tmp/config" \
+            sh source/bin/autopurge_ctl.sh set_config apk_cleaning true module_residue_cleaning true > "$tmp/config-result.json"
+          test "$(grep -c '^apk_cleaning=' "$tmp/config/配置.conf")" -eq 1
+          grep -q '^apk_cleaning=true
+          python3 - "$tmp/preview.json" "$tmp/storage/Download/demo.apk" "$tmp/module/sample.bak" <<'PY'
+          import json, os, sys
+          with open(sys.argv[1], encoding="utf-8") as f:
+              result = json.load(f)
+          assert result["status"] == "ok", result
+          assert result["scope"] == "shell_managed_only", result
+          assert result["count"] == 2, result
+          assert len(result["items"]) == 2, result
+          assert {item["type"] for item in result["items"]} == {"apk", "module_backup"}, result
+          assert os.path.exists(sys.argv[2]), "preview deleted APK candidate"
+          assert os.path.exists(sys.argv[3]), "preview deleted module backup"
+          print("preview smoke test passed")
+          PY
+
+      - name: Check WebUI JavaScript syntax
+        run: node --check source/webroot/app.js
+ "$tmp/config/配置.conf"
           AUTOPURGE_MODDIR="$tmp/module" AUTOPURGE_CONFIG_DIR="$tmp/config" \
             sh source/bin/autopurge_ctl.sh preview_cleanup > "$tmp/preview.json"
           python3 - "$tmp/preview.json" "$tmp/storage/Download/demo.apk" "$tmp/module/sample.bak" <<'PY'
