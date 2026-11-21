@@ -54,6 +54,11 @@ get_conf_val() {
     printf '%s' "$val"
 }
 
+path_is_child_of() {
+    # $1=候选路径 $2=允许的根目录；不接受根目录本身或根目录之外的路径。
+    case "$1" in "$2"/*) return 0 ;; *) return 1 ;; esac
+}
+
 get_path_val() {
     # 读取 FilePaths.conf 中的路径并做安全校验，非法值回退默认。
     local key="$1" default_val="$2" val
@@ -361,7 +366,13 @@ clean_apk_packages() {
     [ "$sw" = "true" ] || return 0
 
     # 仅清理用户明确配置的下载目录；不扫描其他应用私有缓存/数据目录。
-    download_path=$(get_path_val download "/storage/emulated/0/Download")
+    storage_root=$(get_path_val storage_root "/storage/emulated/0")
+    [ -d "$storage_root" ] || storage_root="/sdcard"
+    download_path=$(get_path_val download "$storage_root/Download")
+    if ! path_is_child_of "$download_path" "$storage_root"; then
+        log_event "$CLEAR_LOG" "[APK清理] 跳过不在存储根目录内的下载路径: $download_path"
+        return 0
+    fi
     [ -d "$download_path" ] || return 0
     [ ! -L "$download_path" ] || {
         log_event "$CLEAR_LOG" "[APK清理] 跳过符号链接目录: $download_path"
@@ -950,7 +961,7 @@ EOF_STATUS
 
 preview_cleanup() {
     init_env
-    local list_tmp path size count=0 bytes=0 shown=0 first=1 kind download_path apk_sw residue_sw
+    local list_tmp path size count=0 bytes=0 shown=0 first=1 kind download_path storage_root apk_sw residue_sw
     list_tmp="$CONFIG_DIR/.preview_list.$$"
     : > "$list_tmp" || { echo '{"status":"error","message":"cannot create preview list"}'; return 1; }
 
@@ -958,8 +969,10 @@ preview_cleanup() {
     residue_sw=$(get_conf_val "module_residue_cleaning" "$MAIN_CONF" "false")
 
     if [ "$apk_sw" = "true" ]; then
-        download_path=$(get_path_val download "/storage/emulated/0/Download")
-        if [ -d "$download_path" ] && [ ! -L "$download_path" ]; then
+        storage_root=$(get_path_val storage_root "/storage/emulated/0")
+        [ -d "$storage_root" ] || storage_root="/sdcard"
+        download_path=$(get_path_val download "$storage_root/Download")
+        if path_is_child_of "$download_path" "$storage_root" && [ -d "$download_path" ] && [ ! -L "$download_path" ]; then
             find "$download_path" -maxdepth 2 -type f -name "*.apk" -print 2>/dev/null >> "$list_tmp"
         fi
     fi
