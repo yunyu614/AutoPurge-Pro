@@ -59,6 +59,26 @@ path_is_child_of() {
     case "$1" in "$2"/*) return 0 ;; *) return 1 ;; esac
 }
 
+path_has_symlink_component() {
+    # $1=候选路径 $2=可信根目录；检查根目录以下每一级，防止词法子路径经符号链接逃逸。
+    local candidate="$1" root="$2" relative component current
+    path_is_child_of "$candidate" "$root" || return 1
+    relative=${candidate#"$root"/}
+    current="$root"
+    while [ -n "$relative" ]; do
+        component=${relative%%/*}
+        if [ "$relative" = "$component" ]; then
+            relative=""
+        else
+            relative=${relative#*/}
+        fi
+        [ -n "$component" ] || continue
+        current="$current/$component"
+        [ ! -L "$current" ] || return 0
+    done
+    return 1
+}
+
 is_protected_system_path() {
     case "$1" in
         /data/media/0|/data/media/0/*)
@@ -367,11 +387,11 @@ organize_target_get() {
     ORG_AUD=$(get_path_val audio "$ORG_ROOT/Music/AutoPurge")
     ORG_APK=$(get_path_val apks "$ORG_ROOT/安装包/AutoPurge")
     ORG_MOD=$(get_path_val modules "$ORG_ROOT/模块安装包/AutoPurge")
-    path_is_child_of "$ORG_IMG" "$ORG_ROOT" || ORG_IMG="$ORG_ROOT/Pictures/AutoPurge"
-    path_is_child_of "$ORG_VID" "$ORG_ROOT" || ORG_VID="$ORG_ROOT/Movies/AutoPurge"
-    path_is_child_of "$ORG_AUD" "$ORG_ROOT" || ORG_AUD="$ORG_ROOT/Music/AutoPurge"
-    path_is_child_of "$ORG_APK" "$ORG_ROOT" || ORG_APK="$ORG_ROOT/安装包/AutoPurge"
-    path_is_child_of "$ORG_MOD" "$ORG_ROOT" || ORG_MOD="$ORG_ROOT/模块安装包/AutoPurge"
+    path_is_child_of "$ORG_IMG" "$ORG_ROOT" && ! path_has_symlink_component "$ORG_IMG" "$ORG_ROOT" || ORG_IMG="$ORG_ROOT/Pictures/AutoPurge"
+    path_is_child_of "$ORG_VID" "$ORG_ROOT" && ! path_has_symlink_component "$ORG_VID" "$ORG_ROOT" || ORG_VID="$ORG_ROOT/Movies/AutoPurge"
+    path_is_child_of "$ORG_AUD" "$ORG_ROOT" && ! path_has_symlink_component "$ORG_AUD" "$ORG_ROOT" || ORG_AUD="$ORG_ROOT/Music/AutoPurge"
+    path_is_child_of "$ORG_APK" "$ORG_ROOT" && ! path_has_symlink_component "$ORG_APK" "$ORG_ROOT" || ORG_APK="$ORG_ROOT/安装包/AutoPurge"
+    path_is_child_of "$ORG_MOD" "$ORG_ROOT" && ! path_has_symlink_component "$ORG_MOD" "$ORG_ROOT" || ORG_MOD="$ORG_ROOT/模块安装包/AutoPurge"
 }
 
 move_one_file() {
@@ -452,7 +472,7 @@ clean_apk_packages() {
         return 0
     fi
     download_path=$(get_path_val download "$storage_root/Download")
-    if ! path_is_child_of "$download_path" "$storage_root"; then
+    if ! path_is_child_of "$download_path" "$storage_root" || path_has_symlink_component "$download_path" "$storage_root"; then
         log_event "$CLEAR_LOG" "[APK清理] 跳过不在存储根目录内的下载路径: $download_path"
         return 0
     fi
@@ -467,6 +487,7 @@ clean_apk_packages() {
     while IFS= read -r apk; do
         [ -f "$apk" ] && [ ! -L "$apk" ] || continue
         case "$apk" in "$download_path"/*) ;; *) continue ;; esac
+        path_has_symlink_component "$apk" "$storage_root" && continue
         if rm -f "$apk" 2>/dev/null; then
             printf '%s %s\n' "$now_str" "[APK清理] 删除安装包: $apk" >> "$CLEAR_LOG"
             printf '%s | APK清理 | %s\n' "$now_str" "$apk" >> "$HISTORY_LOG"
@@ -522,13 +543,20 @@ log_mt_output() {
 # ---------------------------------------------------------------- 文件整理主流程
 
 organize_user_files() {
-    local sw src f list_tmp source_tmp rc=0
+    local sw src f dest list_tmp source_tmp rc=0
     ORG_MOVED_COUNT=0
     ORG_FAILED_COUNT=0
     sw=$(get_conf_val "file_organize" "$MAIN_CONF" "false")
     [ "$sw" != "true" ] && [ "$1" != "force" ] && return 0
     organize_target_get
+    # 创建前检查已有父级；创建后再次检查，避免目标目录通过符号链接逃出存储根目录。
+    for dest in "$ORG_IMG" "$ORG_VID" "$ORG_AUD" "$ORG_APK" "$ORG_MOD"; do
+        path_has_symlink_component "$dest" "$ORG_ROOT" && return 1
+    done
     mkdir -p "$ORG_IMG" "$ORG_VID" "$ORG_AUD" "$ORG_APK" "$ORG_MOD" 2>/dev/null || return 1
+    for dest in "$ORG_IMG" "$ORG_VID" "$ORG_AUD" "$ORG_APK" "$ORG_MOD"; do
+        path_has_symlink_component "$dest" "$ORG_ROOT" && return 1
+    done
 
     # 每个任务使用独立临时文件，避免并发扫描/整理互相覆盖。
     list_tmp="$CONFIG_DIR/.organize_list.$$"
@@ -1045,7 +1073,7 @@ preview_cleanup() {
             storage_root="/storage/emulated/0"
         fi
         download_path=$(get_path_val download "$storage_root/Download")
-        if path_is_child_of "$download_path" "$storage_root" && [ -d "$download_path" ] && [ ! -L "$download_path" ]; then
+        if path_is_child_of "$download_path" "$storage_root" && ! path_has_symlink_component "$download_path" "$storage_root" && [ -d "$download_path" ]; then
             find "$download_path" -maxdepth 2 -type f -name "*.apk" -print 2>/dev/null >> "$list_tmp"
         fi
     fi
