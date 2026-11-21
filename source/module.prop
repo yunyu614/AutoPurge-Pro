@@ -1,6 +1,6 @@
 id=Clear_Rubbish
 name=AutoPurge Pro
-version=4.4.2
-versionCode=442
+version=4.4.3
+versionCode=443
 author=liancan
-description=AutoPurge Pro v4.4.2 - robust Root bridge, custom cleanup interval
+description=AutoPurge Pro v4.4.3 - safety hardening and task lifecycle fixes
