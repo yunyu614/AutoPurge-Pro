@@ -97,7 +97,7 @@ read_pid() {
 }
 
 acquire_daemon_lock() {
-    local owner stale_dir
+    local owner current stale_dir recovery="$LOCK_DIR.recover"
     if mkdir "$LOCK_DIR" 2>/dev/null; then
         printf '%s\n' "$$" > "$LOCK_DIR/pid" 2>/dev/null || {
             rmdir "$LOCK_DIR" 2>/dev/null
@@ -106,21 +106,30 @@ acquire_daemon_lock() {
         return 0
     fi
     owner=$(cat "$LOCK_DIR/pid" 2>/dev/null | tr -d ' \r\n')
-    # 锁初始化窗口或损坏锁一律保守拒绝，不冒险启动第二个调度器。
     case "$owner" in ''|*[!0-9]*) return 1 ;; esac
-    if pid_is_daemon "$owner"; then return 1; fi
+
+    # 单独的恢复锁串行化陈旧实例回收，避免两个启动者互相搬走新锁。
+    mkdir "$recovery" 2>/dev/null || return 1
+    current=$(cat "$LOCK_DIR/pid" 2>/dev/null | tr -d ' \r\n')
+    if [ "$current" != "$owner" ] || pid_is_daemon "$owner"; then
+        rmdir "$recovery" 2>/dev/null
+        return 1
+    fi
     stale_dir="$LOCK_DIR.stale.$$"
-    [ ! -e "$stale_dir" ] || return 1
-    if mv "$LOCK_DIR" "$stale_dir" 2>/dev/null; then
-        rm -f "$stale_dir/pid" 2>/dev/null
-        rmdir "$stale_dir" 2>/dev/null
-        if mkdir "$LOCK_DIR" 2>/dev/null; then
-            printf '%s\n' "$$" > "$LOCK_DIR/pid" 2>/dev/null || {
-                rmdir "$LOCK_DIR" 2>/dev/null
-                return 1
-            }
-            return 0
-        fi
+    if [ -e "$stale_dir" ] || ! mv "$LOCK_DIR" "$stale_dir" 2>/dev/null; then
+        rmdir "$recovery" 2>/dev/null
+        return 1
+    fi
+    rm -f "$stale_dir/pid" 2>/dev/null
+    rmdir "$stale_dir" 2>/dev/null
+    rmdir "$recovery" 2>/dev/null
+
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+        printf '%s\n' "$$" > "$LOCK_DIR/pid" 2>/dev/null || {
+            rmdir "$LOCK_DIR" 2>/dev/null
+            return 1
+        }
+        return 0
     fi
     return 1
 }
