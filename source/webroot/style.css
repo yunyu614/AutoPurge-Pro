@@ -1045,8 +1045,8 @@ button:focus-visible, input:focus-visible, summary:focus-visible {
 }
 body { -webkit-font-smoothing: antialiased; }
 .app-header {
-  background: color-mix(in srgb, var(--bg-card) 94%, transparent);
-  border-bottom-color: color-mix(in srgb, var(--border-color) 78%, transparent);
+  background: var(--bg-card);
+  border-bottom-color: var(--border-color);
 }
 .main-container { padding-top: 20px; }
 .card {
@@ -1199,7 +1199,7 @@ body { -webkit-font-smoothing: antialiased; }
 }
 button:disabled { opacity: .55; cursor: not-allowed; transform: none; }
 @media (hover: hover) and (pointer: fine) {
-  .card:hover { border-color: color-mix(in srgb, var(--accent-blue) 24%, var(--border-color)); }
+  .card:hover { border-color: var(--accent-blue); }
   .btn-outline:hover { background: var(--bg-card-hover); }
 }
 @media (max-width: 480px) {
