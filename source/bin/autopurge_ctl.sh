@@ -713,13 +713,7 @@ do_cleanup() {
         done
     fi
 
-    # 历史明细超过 1000 行时截断
-    local hist_lines
-    hist_lines=$(wc -l < "$HISTORY_LOG" 2>/dev/null | tr -d ' ')
-    case "$hist_lines" in ''|*[!0-9]*) hist_lines=0 ;; esac
-    if [ "$hist_lines" -gt 1000 ]; then
-        tail -n 1000 "$HISTORY_LOG" > "$HISTORY_LOG.tmp" 2>/dev/null && mv -f "$HISTORY_LOG.tmp" "$HISTORY_LOG"
-    fi
+    # 历史日志不再硬截断行数；统一在本轮历史同步完成后按字节轮转。
 
     local after_avail freed_kb
     after_avail=$(df -k /data 2>/dev/null | tail -n1 | awk '{print $4}')
