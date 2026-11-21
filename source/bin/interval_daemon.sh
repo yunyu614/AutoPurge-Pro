@@ -128,11 +128,11 @@ acquire_daemon_lock() {
 release_daemon_lock() {
     local owner current
     owner=$(cat "$LOCK_DIR/pid" 2>/dev/null | tr -d ' \r\n')
-    [ "$owner" = "$" ] || return 0
+    [ "$owner" = "$$" ] || return 0
     rm -f "$LOCK_DIR/pid" 2>/dev/null
     rmdir "$LOCK_DIR" 2>/dev/null
     current=$(read_pid)
-    [ "$current" = "$" ] && rm -f "$PID_FILE"
+    [ "$current" = "$$" ] && rm -f "$PID_FILE"
 }
 
 stop_daemon() {
