@@ -697,7 +697,7 @@ function renderDashboardData(data) {
   setText("statTotalDirs", Number(st.total_dirs || 0).toLocaleString());
   setText("statLastFiles", `上次清理: +${st.last_run_files || 0} 个文件`);
   setText("statLastDirs", `上次清理: +${st.last_run_dirs || 0} 个目录`);
-  setText("statTotalFreed", formatSizeFromKB(st.total_freed_kb || 0));
+  setText("statTotalFreed", formatSizeFromKB(st.observed_space_increase_kb || 0));
   setText("statTotalRuns", `累计执行: ${st.total_runs || 0} 次`);
   setText("statLastTime", st.last_clean_time || "尚未执行");
   const schedText = sc.mode === "interval"
