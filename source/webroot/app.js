@@ -1218,7 +1218,14 @@ async function organizeUserFiles() {
   if (btn) { btn.disabled = true; btn.textContent = "归档中…"; }
   try {
     const state = await runFileTask("organize");
-    if (state) showToast("文件归档已完成");
+    if (state) {
+      const result = state.result || {};
+      if (result.status === "error" || Number(result.failed || 0) > 0) {
+        showToast(`归档结束：成功移动 ${Number(result.moved || 0)} 个，失败 ${Number(result.failed || 0)} 个`);
+      } else {
+        showToast(`归档完成：成功移动 ${Number(result.moved || 0)} 个文件`);
+      }
+    }
   } catch (e) {
     showToast(`归档失败：${String(e.message || e).slice(0, 70)}`);
   } finally {
