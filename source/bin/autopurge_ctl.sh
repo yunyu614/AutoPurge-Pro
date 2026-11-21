@@ -268,12 +268,14 @@ EOF_TIMING
 }
 
 init_env() {
+    local init_tmp
     mkdir -p "$LIST_DIR" "$TIMING_DIR" "$MODDIR/cron.d"
 
-    # 配置文件缺失时写入默认值，避免所有开关回落到隐式默认。
+    # 缺失配置通过临时文件初始化，避免断电留下半截文件。
     if [ ! -f "$MAIN_CONF" ]; then
-        cat > "$MAIN_CONF" <<'EOF_MAINCONF'
-// AutoPurge Pro 全局配置文件 (Author: liancan)
+        init_tmp="$MAIN_CONF.init.$$"
+        cat > "$init_tmp" <<'EOF_MAINCONF'
+ // AutoPurge Pro 全局配置文件 (Author: liancan)
 master_switch=true
 timed_cleaning=true
 mt_cleaning=true
@@ -284,18 +286,23 @@ module_residue_cleaning=false
 file_organize=false
 blacklist_cleaning=true
 EOF_MAINCONF
-        chmod 644 "$MAIN_CONF" 2>/dev/null
+        chmod 644 "$init_tmp" 2>/dev/null
+        mv -f "$init_tmp" "$MAIN_CONF" || rm -f "$init_tmp"
     fi
-    if ! grep -q "^master_switch=" "$MAIN_CONF" 2>/dev/null; then
-        sed -i '1i master_switch=true' "$MAIN_CONF" 2>/dev/null || echo "master_switch=true" >> "$MAIN_CONF"
+    if ! grep -qE "^[[:space:]]*master_switch[[:space:]]*=" "$MAIN_CONF" 2>/dev/null; then
+        set_conf_val master_switch true "$MAIN_CONF" || echo "master_switch=true" >> "$MAIN_CONF"
     fi
 
-    [ -f "$COUNTER_FILE" ] || printf "目录=0\n文件=0\n" > "$COUNTER_FILE"
+    if [ ! -f "$COUNTER_FILE" ]; then
+        init_tmp="$COUNTER_FILE.init.$$"
+        printf "目录=0\n文件=0\n" > "$init_tmp" && mv -f "$init_tmp" "$COUNTER_FILE" || rm -f "$init_tmp"
+    fi
     [ -f "$CLEAR_LOG" ] || : > "$CLEAR_LOG"
     [ -f "$HISTORY_LOG" ] || : > "$HISTORY_LOG"
 
     if [ ! -f "$FILE_PATHS_CONF" ]; then
-        cat > "$FILE_PATHS_CONF" <<'EOF_PATHS'
+        init_tmp="$FILE_PATHS_CONF.init.$$"
+        cat > "$init_tmp" <<'EOF_PATHS'
 storage_root=/storage/emulated/0
 download=/storage/emulated/0/Download
 qq=/storage/emulated/0/QQfile_recv
@@ -308,13 +315,15 @@ audio=/storage/emulated/0/Music/AutoPurge
 apks=/storage/emulated/0/安装包/AutoPurge
 modules=/storage/emulated/0/模块安装包/AutoPurge
 EOF_PATHS
-        chmod 600 "$FILE_PATHS_CONF"
+        chmod 600 "$init_tmp" 2>/dev/null
+        mv -f "$init_tmp" "$FILE_PATHS_CONF" || rm -f "$init_tmp"
     fi
 
     ensure_timing_conf
 
     if [ ! -f "$STATS_JSON" ]; then
-        cat > "$STATS_JSON" <<'EOF_STATS'
+        init_tmp="$STATS_JSON.init.$$"
+        cat > "$init_tmp" <<'EOF_STATS'
 {
   "total_files": 0,
   "total_dirs": 0,
@@ -327,7 +336,8 @@ EOF_PATHS
   "last_clean_time": "尚未执行"
 }
 EOF_STATS
-        chmod 644 "$STATS_JSON" 2>/dev/null
+        chmod 644 "$init_tmp" 2>/dev/null
+        mv -f "$init_tmp" "$STATS_JSON" || rm -f "$init_tmp"
     fi
 }
 
