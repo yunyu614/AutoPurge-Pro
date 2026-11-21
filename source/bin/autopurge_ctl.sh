@@ -550,14 +550,14 @@ organize_user_files() {
 
 scan_user_files() {
     # 独立临时文件避免并发任务互相覆盖；文件名含换行符不在当前格式支持范围内。
-    local list_tmp source_tmp src f ext
-    list_tmp="$CONFIG_DIR/.scan_list.$$"
+    local list_tmp source_tmp src f ext scan_rc=0
+    list_tmp="$CONFIG_DIR/.scan_list.$"
     source_tmp="$CONFIG_DIR/.scan_sources.$$"
     : > "$list_tmp" || return 1
     organize_source_dirs > "$source_tmp" || { rm -f "$list_tmp" "$source_tmp"; return 1; }
     while IFS= read -r src; do
         [ -d "$src" ] || continue
-        find "$src" -maxdepth 2 -type f 2>/dev/null >> "$list_tmp" || :
+        find "$src" -maxdepth 2 -type f 2>/dev/null >> "$list_tmp" || scan_rc=1
     done < "$source_tmp"
 
     local total=0 images=0 videos=0 audio=0 apks=0 archives=0
@@ -574,24 +574,11 @@ scan_user_files() {
         esac
     done < "$list_tmp"
     rm -f "$list_tmp" "$source_tmp"
-    printf '{"status":"ok","total":%s,"images":%s,"videos":%s,"audio":%s,"apks":%s,"archives":%s}\n' "$total" "$images" "$videos" "$audio" "$apks" "$archives"
+    printf '{"status":"%s","total":%s,"images":%s,"videos":%s,"audio":%s,"apks":%s,"archives":%s}\n' "$([ "$scan_rc" -eq 0 ] && echo ok || echo partial)" "$total" "$images" "$videos" "$audio" "$apks" "$archives"
+    return "$scan_rc"
 }
 
 # ---------------------------------------------------------------- 清理主流程
-# ---------------------------------------------------------------- 清理主流程
-
-clean_lock_owner_alive() {
-    local owner="$1" cmd=""
-    case "$owner" in ''|*[!0-9]*) return 1 ;; esac
-    kill -0 "$owner" 2>/dev/null || return 1
-    # PID 存活但无法确认进程身份时，按“仍在运行”处理，避免误回收锁。
-    [ -r "/proc/$owner/cmdline" ] || return 0
-    cmd=$(tr '\000' ' ' < "/proc/$owner/cmdline" 2>/dev/null)
-    case "$cmd" in
-        *"$SCRIPT_PATH"*clean*) return 0 ;;
-        *) return 1 ;;
-    esac
-}
 
 acquire_clean_lock() {
     local owner stale_dir
