@@ -27,8 +27,8 @@ LOG_FILE="$MODDIR/interval.log"
 SCRIPT_PATH="$SCRIPT_DIR/interval_daemon.sh"
 
 getv() {
-    # $1=键 $2=文件；只取第一次出现的值
-    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$2" 2>/dev/null | head -n1 | tr -d ' \r\t'
+    # $1=键 $2=文件；与控制脚本统一取最后一次定义，兼容旧配置重复键。
+    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$2" 2>/dev/null | tail -n1 | tr -d ' \r\t'
 }
 
 state_get() {
