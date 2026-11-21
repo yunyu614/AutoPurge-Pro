@@ -134,7 +134,7 @@
           <label class="switch"><input type="checkbox" id="swMt" checked onchange="onToggleSwitch('mt_cleaning', this.checked)"/><span class="slider"></span></label>
         </div>
         <div class="setting-item compact-setting">
-          <div class="setting-info"><h4>日志自动维护</h4><p>Clear.log 超过阈值后自动截断</p></div>
+          <div class="setting-info"><h4>日志自动维护</h4><p>达到阈值后轮转备份，保留最近一份日志</p></div>
           <label class="switch"><input type="checkbox" id="swLog" checked onchange="onToggleSwitch('log_cleaning', this.checked)"/><span class="slider"></span></label>
         </div>
         <div class="setting-item compact-setting">
@@ -142,7 +142,7 @@
           <label class="switch"><input type="checkbox" id="swModResidue" onchange="onToggleSwitch('module_residue_cleaning', this.checked)"/><span class="slider"></span></label>
         </div>
         <div class="setting-item compact-setting">
-          <div class="setting-info"><h4>APK 自动清理</h4><p>仅清理配置下载目录中的 APK 安装包</p></div>
+          <div class="setting-info"><h4>APK 自动清理</h4><p>仅处理存储根目录内配置的下载目录，不扫描其他应用私有数据</p></div>
           <label class="switch"><input type="checkbox" id="swApkClean" onchange="onToggleSwitch('apk_cleaning', this.checked)"/><span class="slider"></span></label>
         </div>
         <div class="setting-item compact-setting">
@@ -182,7 +182,7 @@
           <button class="btn btn-primary" id="btnOrganizeFiles" onclick="organizeUserFiles()">开始归档</button>
         </div>
         <div class="file-path-shortcut">
-          <span>扫描来源与归档目标可在规则中心自定义</span>
+          <span>仅移动归档，不删除原文件；路径可在规则中心自定义</span>
           <button class="btn btn-outline btn-sm" onclick="switchTab('rules')">修改路径</button>
         </div>
       </div>
@@ -194,7 +194,7 @@
         <div class="card-header">
           <div>
             <div class="card-title">规则与路径</div>
-            <div class="card-subtitle">名单规则 · 扫描来源 · 归档目标</div>
+            <div class="card-subtitle">先配置规则，再检查来源与归档位置</div>
           </div>
         </div>
 
@@ -240,14 +240,14 @@
         </details>
 
         <details class="path-group">
-          <summary>存储根目录 <span>当前：内部存储</span></summary>
+          <summary>存储根目录 <span>限定共享存储范围</span></summary>
           <label class="root-path-label">存储根目录
             <input class="input path-input" id="path_storage_root" value="/storage/emulated/0" />
           </label>
         </details>
 
         <details class="path-group">
-          <summary>扫描来源路径 <span>5 项</span></summary>
+          <summary>扫描来源路径 <span>5 个目录 · 可单独修改</span></summary>
           <div class="path-config-grid">
             <label>下载目录<input class="input path-input" id="path_download" value="/storage/emulated/0/Download" /></label>
             <label>QQ 接收目录<input class="input path-input" id="path_qq" value="/storage/emulated/0/QQfile_recv" /></label>
@@ -258,7 +258,7 @@
         </details>
 
         <details class="path-group">
-          <summary>分类归档目标 <span>5 项</span></summary>
+          <summary>分类归档目标 <span>5 个目录 · 不覆盖原文件</span></summary>
           <div class="path-config-grid">
             <label>图片归档目录<input class="input path-input" id="path_images" value="/storage/emulated/0/Pictures/AutoPurge" /></label>
             <label>视频归档目录<input class="input path-input" id="path_videos" value="/storage/emulated/0/Movies/AutoPurge" /></label>
