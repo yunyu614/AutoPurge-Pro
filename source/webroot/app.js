@@ -743,10 +743,8 @@ async function onCleanupMasterToggle(checked) {
   const ids = ["swBlacklistClean", "swMt", "swLog", "swModResidue", "swApkClean", "swTimed"];
   ids.forEach((id) => setSwitch(id, checked));
   if (!isKsuEnv()) { showToast(`清理功能总开关已${checked ? "开启" : "关闭"}（预览模式）`); return; }
-  const assignments = keys.map((key) =>
-    `if grep -qE "^[[:space:]]*${key}[[:space:]]*=" "${FILE_PATHS.main_conf}"; then sed -i "s|^[[:space:]]*${key}[[:space:]]*=.*|${key}=${checked}|g" "${FILE_PATHS.main_conf}"; else echo "${key}=${checked}" >> "${FILE_PATHS.main_conf}"; fi`
-  ).join("; ");
-  const result = await execRootCmd(`${assignments}; ${SHELL} "${CTL_SCRIPT}" apply`);
+  const assignments = keys.map((key) => `${key} ${checked ? "true" : "false"}`).join(" ");
+  const result = await execRootCmd(`${SHELL} "${CTL_SCRIPT}" set_config ${assignments} && ${SHELL} "${CTL_SCRIPT}" apply`);
   if (result.errno !== 0) { showToast("清理总开关保存失败，请检查 Root 权限"); refreshDashboard(); return; }
   showToast(`清理功能及定时任务已${checked ? "全部启用" : "全部停用"}`);
   refreshDashboard();
@@ -756,14 +754,7 @@ async function onToggleSwitch(key, checked) {
   const val = checked ? "true" : "false";
   const label = SWITCH_LABELS[key] || key;
   if (isKsuEnv()) {
-    const cmd = `
-      if grep -qE "^[[:space:]]*${key}[[:space:]]*=" "${FILE_PATHS.main_conf}"; then
-        sed -i "s|^[[:space:]]*${key}[[:space:]]*=.*|${key}=${val}|g" "${FILE_PATHS.main_conf}"
-      else
-        echo "${key}=${val}" >> "${FILE_PATHS.main_conf}"
-      fi
-      ${SHELL} "${CTL_SCRIPT}" apply
-    `;
+    const cmd = `${SHELL} "${CTL_SCRIPT}" set_config ${key} ${val} && ${SHELL} "${CTL_SCRIPT}" apply`;
     const result = await execRootCmd(cmd);
     if (result.errno !== 0) {
       showToast(`${label}保存失败，请检查 Root 权限`);
@@ -783,15 +774,7 @@ async function onChangeLogSize(val) {
     return;
   }
   if (isKsuEnv()) {
-    const cmd = `
-      if grep -qE "^[[:space:]]*log_purge_size[[:space:]]*=" "${FILE_PATHS.main_conf}"; then
-        sed -i "s|^[[:space:]]*log_purge_size[[:space:]]*=.*|log_purge_size=${val}|g" "${FILE_PATHS.main_conf}"
-      else
-        echo "log_purge_size=${val}" >> "${FILE_PATHS.main_conf}"
-      fi
-      pkill -f "${MODDIR}/bin/LogClear" 2>/dev/null
-      ${SHELL} "${CTL_SCRIPT}" apply
-    `;
+    const cmd = `${SHELL} "${CTL_SCRIPT}" set_config log_purge_size ${val} && (pkill -f "${MODDIR}/bin/LogClear" 2>/dev/null || true) && ${SHELL} "${CTL_SCRIPT}" apply`;
     const result = await execRootCmd(cmd);
     if (result.errno !== 0) {
       showToast("日志阈值保存失败，请检查 Root 权限");
