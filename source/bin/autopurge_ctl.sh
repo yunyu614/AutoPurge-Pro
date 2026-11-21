@@ -668,11 +668,14 @@ do_cleanup() {
     freed_kb=$((after_avail - before_avail))
     [ "$freed_kb" -lt 0 ] && freed_kb=0
 
-    local prev_runs prev_freed total_runs total_freed_kb now_str
+    local prev_runs prev_freed prev_observed total_runs total_freed_kb total_observed now_str
     prev_runs=$(stats_field "total_runs" 0)
     prev_freed=$(stats_field "total_freed_kb" 0)
+    prev_observed=$(stats_field "observed_space_increase_kb" 0)
     total_runs=$((prev_runs + 1))
+    # total_freed_kb 保留旧版兼容；新 UI 使用独立字段，避免继承旧版估算历史。
     total_freed_kb=$((prev_freed + freed_kb))
+    total_observed=$((prev_observed + freed_kb))
     now_str=$(date '+%Y-%m-%d %H:%M:%S')
 
     local stats_tmp="$STATS_JSON.tmp.$$"
@@ -877,9 +880,10 @@ get_status_json() {
     dirs=$(counter_get "目录")
     files=$(counter_get "文件")
 
-    local total_runs total_freed_kb last_run_files last_run_dirs last_clean_time
+    local total_runs total_freed_kb observed_space_increase_kb last_run_files last_run_dirs last_clean_time
     total_runs=$(stats_field "total_runs" 0)
     total_freed_kb=$(stats_field "total_freed_kb" 0)
+    observed_space_increase_kb=$(stats_field "observed_space_increase_kb" 0)
     last_run_files=$(stats_field "last_run_files" 0)
     last_run_dirs=$(stats_field "last_run_dirs" 0)
     last_clean_time=$(json_escape "$(stats_time_field "尚未执行")")
