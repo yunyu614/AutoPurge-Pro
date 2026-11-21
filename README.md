@@ -9,14 +9,14 @@
 
   **让清理更智能，让管理更简单。**
 
-  面向 Android Root 用户的可视化清理与文件管理模块
+  面向 Android Root 用户的可视化清理、文件整理与自动维护工具
 
   <p>
     <a href="https://github.com/yunyu614/AutoPurge-Pro/releases/latest"><img src="https://img.shields.io/github/v/release/yunyu614/AutoPurge-Pro?style=for-the-badge&logo=github&label=最新版本&color=6378e8" alt="Latest Release"></a>
     <img src="https://img.shields.io/badge/Android-Root-3c9b87?style=for-the-badge&logo=android&logoColor=white" alt="Android Root">
     <img src="https://img.shields.io/badge/KernelSU-适配方向-1686a8?style=for-the-badge" alt="KernelSU">
     <img src="https://img.shields.io/badge/WebUI-可视化管理-8069cf?style=for-the-badge" alt="WebUI">
-    <img src="https://img.shields.io/badge/Version-4.4.2-5478e8?style=for-the-badge" alt="Version 4.4.2">
+    <img src="https://img.shields.io/github/v/release/yunyu614/AutoPurge-Pro?style=for-the-badge&logo=github&label=Release" alt="Latest release">
   </p>
 
   <p>
@@ -58,6 +58,21 @@
 - 🛡️ 通过规则与路径配置控制处理范围
 - 📁 按照配置扫描、整理和归档文件
 - 📋 在日志中心查看各功能运行记录
+
+
+### 项目定位
+
+AutoPurge Pro 是一个以 Android Root 环境为运行基础、以 WebUI 为统一操作入口的设备维护项目。它将清理任务、文件扫描与分类归档、规则管理、定时调度、运行状态和日志统计组合在一起，目标是让用户能够明确知道**处理什么、从哪里处理、按什么规则处理，以及任务执行得怎样**。
+
+项目由设备端 Shell 脚本与 WebUI 协同工作：WebUI 负责展示状态、编辑配置和发起操作；后台控制脚本负责权限环境检查、任务调度、文件处理和状态记录。长耗时操作尽量放在后台执行，避免界面请求承担整段文件任务。
+
+### 功能边界
+
+- 清理范围由模块支持的清理项目及用户配置共同决定，不代表全盘扫描或自动清除所有缓存。
+- APK 清理针对配置的共享存储下载目录；模块备份清理限制在当前模块目录内。
+- 文件整理以规则驱动的移动归档为主，执行前应核对来源与目标路径。
+- 清理预览仅展示 Shell 管理的候选项，不等同于所有底层清理器的完整预览。
+- 项目需要 Root 权限；不同 Root 管理器、Android 系统和 WebView 环境的行为可能存在差异。
 
 ### ✨ 设计原则
 
@@ -194,14 +209,14 @@
 
 ## 🗂️ 源码目录
 
-自 v4.4.2 起，仓库的 [`source/`](source) 目录包含完整模块源码与构建所需文件，可直接用于审阅、二次开发或重新打包。
+仓库的 [`source/`](source) 目录包含模块源码与构建所需文件，可用于审阅、二次开发或重新打包。项目版本号仅用于区分发布迭代；功能定位、使用方式与整体架构以本文档为准。
 
 | 路径 | 说明 |
 |:---|:---|
 | `source/module.prop` | 模块信息与版本号 |
 | `source/webroot/` | WebUI 前端（`index.html` / `app.js` / `style.css`） |
 | `source/bin/autopurge_ctl.sh` | 清理、统计与服务控制引擎 |
-| `source/bin/interval_daemon.sh` | 间隔调度守护进程（v4.4.2 新增） |
+| `source/bin/interval_daemon.sh` | 自定义间隔调度守护进程 |
 | `source/Configuration_File/` | 配置模板与定时脚本 `Timing_Settings.sh` |
 | `source/Service_Config/` | 守护服务启动脚本 |
 | `source/Main.sh` / `service.sh` / `action.sh` / `uninstall.sh` | 模块入口脚本 |
@@ -231,7 +246,9 @@ AutoPurge Pro 涉及 Root 权限及文件操作。为了降低误操作和长任
 
 ## 🆕 更新记录
 
-### <img src="https://img.shields.io/badge/v4.4.2-Root%20Bridge%20%26%20Interval-5478e8?style=flat-square" alt="v4.4.2">
+本节记录项目历次迭代的主要变化，按版本由新到旧排列。版本号代表某次发布快照，不是项目名称或功能定义。当前安装包与完整变更请以 [最新 Release](https://github.com/yunyu614/AutoPurge-Pro/releases/latest) 和 [CHANGELOG.md](CHANGELOG.md) 为准。
+
+### v4.4.2 · Root 桥接与自定义间隔
 
 **v4.4.2 · 修复 WebUI 误报桥接失败，新增自定义间隔清理**
 
@@ -243,7 +260,7 @@ AutoPurge Pro 涉及 Root 权限及文件操作。为了降低误操作和长任
 - ⚡ `status` 改为一次扫描进程，状态读取超时 12s → 20s，JSON 解析容错；旧版定时配置自动补齐字段且不覆盖原有时间。
 - 📦 仓库新增 `source/` 完整模块源码目录。
 
-### <img src="https://img.shields.io/badge/v4.4.1-Installer%20%26%20Stability-5478e8?style=flat-square" alt="v4.4.1">
+### v4.4.1 · 安装向导与稳定性
 
 **v4.4.1 · 安装向导修复与底层稳定性优化**
 
@@ -256,7 +273,7 @@ AutoPurge Pro 涉及 Root 权限及文件操作。为了降低误操作和长任
 - 🧩 清理前端死代码，拆分主题/语言更新流程，补齐开关中文提示、统计重置和动态版本显示。
 - 🔒 保持 Main.sh、service.sh、action.sh、uninstall.sh、五个二进制及 Configuration_File 配置模板不变，便于覆盖升级并保留原有配置与统计。
 
-### <img src="https://img.shields.io/badge/v4.3.0-UI%20%26%20Performance-5478e8?style=flat-square" alt="v4.3.0">
+### v4.3.0 · UI 与性能
 
 **Light Tech UI · 轻科技视觉升级与性能保护**
 
@@ -268,7 +285,7 @@ AutoPurge Pro 涉及 Root 权限及文件操作。为了降低误操作和长任
 - 🪶 视觉效果以 CSS 为主，不新增大型动画或图表运行时依赖。
 - 🛡️ 增加减少动态效果偏好支持，优先控制 WebView 的渲染负担。
 
-### <img src="https://img.shields.io/badge/v4.2.2-Performance-64748b?style=flat-square" alt="v4.2.2">
+### v4.2.2 · 后台任务与响应优化
 
 **Performance · 后台任务与响应优化**
 
@@ -277,7 +294,7 @@ AutoPurge Pro 涉及 Root 权限及文件操作。为了降低误操作和长任
 - 🔄 合并首页重复状态请求，减少不必要的 Root 命令调用。
 - 🧰 优化操作等待状态与按钮反馈。
 
-### <img src="https://img.shields.io/badge/v4.2.1-UI%20Refined-64748b?style=flat-square" alt="v4.2.1">
+### v4.2.1 · 页面结构整理
 
 **UI Refined · 页面结构整理**
 
