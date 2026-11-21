@@ -61,10 +61,10 @@ path_is_child_of() {
 
 is_protected_system_path() {
     case "$1" in
-        /|/data|/data/adb|/data/adb/*|/data/system|/data/system/*|/system|/system/*|/vendor|/vendor/*|/proc|/proc/*|/sys|/sys/*|/dev|/dev/*|/apex|/apex/*|/metadata|/metadata/*)
-            return 0 ;;
         /data/media/0|/data/media/0/*)
             return 1 ;;
+        /|/data|/data/*|/system|/system/*|/vendor|/vendor/*|/proc|/proc/*|/sys|/sys/*|/dev|/dev/*|/apex|/apex/*|/metadata|/metadata/*)
+            return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -386,6 +386,10 @@ clean_apk_packages() {
     # 仅清理用户明确配置的下载目录；不扫描其他应用私有缓存/数据目录。
     storage_root=$(get_path_val storage_root "/storage/emulated/0")
     [ -d "$storage_root" ] || storage_root="/sdcard"
+    if is_protected_system_path "$storage_root"; then
+        log_event "$CLEAR_LOG" "[APK清理] 跳过受保护的存储根目录: $storage_root"
+        return 0
+    fi
     download_path=$(get_path_val download "$storage_root/Download")
     if ! path_is_child_of "$download_path" "$storage_root"; then
         log_event "$CLEAR_LOG" "[APK清理] 跳过不在存储根目录内的下载路径: $download_path"
