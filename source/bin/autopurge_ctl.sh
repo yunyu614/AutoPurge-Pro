@@ -950,14 +950,14 @@ start_cleanup() {
     echo running > "$CLEAN_STATE"
     sh "$SCRIPT_PATH" __cleanup_worker "$mode" </dev/null >/dev/null 2>&1 &
     pid=$!
-    printf '%s\\n' "$pid" > "$CLEAN_PID" || {
+    printf '%s\n' "$pid" > "$CLEAN_PID" || {
         kill "$pid" 2>/dev/null
         rm -f "$CLEAN_STATE" "$CLEAN_PID"
         rmdir "$CLEAN_TASK_LOCK" 2>/dev/null
         echo '{"status":"error","message":"cannot record worker PID"}'
         return 1
     }
-    printf '%s\\n' "$pid" > "$CLEAN_TASK_LOCK/pid" || {
+    printf '%s\n' "$pid" > "$CLEAN_TASK_LOCK/pid" || {
         kill "$pid" 2>/dev/null
         rm -f "$CLEAN_STATE" "$CLEAN_PID"
         rmdir "$CLEAN_TASK_LOCK" 2>/dev/null
@@ -1037,14 +1037,14 @@ start_file_task() {
     echo "running:$task" > "$FILE_TASK_STATE"
     sh "$SCRIPT_PATH" __file_worker "$task" </dev/null >/dev/null 2>&1 &
     pid=$!
-    printf '%s\\n' "$pid" > "$FILE_TASK_PID" || {
+    printf '%s\n' "$pid" > "$FILE_TASK_PID" || {
         kill "$pid" 2>/dev/null
         rm -f "$FILE_TASK_STATE" "$FILE_TASK_PID"
         rmdir "$FILE_TASK_LOCK" 2>/dev/null
         echo '{"status":"error","message":"cannot record worker PID"}'
         return 1
     }
-    printf '%s\\n' "$pid" > "$FILE_TASK_LOCK/pid" || {
+    printf '%s\n' "$pid" > "$FILE_TASK_LOCK/pid" || {
         kill "$pid" 2>/dev/null
         rm -f "$FILE_TASK_STATE" "$FILE_TASK_PID"
         rmdir "$FILE_TASK_LOCK" 2>/dev/null
@@ -1070,7 +1070,7 @@ file_task_worker() {
     else
         organize_user_files force > "$FILE_TASK_LOG" 2>&1
         rc=$?
-        printf '{"status":"%s","message":"文件归位任务结束","moved":%s,"failed":%s}\\n' "$([ "$rc" -eq 0 ] && echo ok || echo error)" "$ORG_MOVED_COUNT" "$ORG_FAILED_COUNT" > "$FILE_TASK_RESULT"
+        printf '{"status":"%s","message":"文件归位任务结束","moved":%s,"failed":%s}\n' "$([ "$rc" -eq 0 ] && echo ok || echo error)" "$ORG_MOVED_COUNT" "$ORG_FAILED_COUNT" > "$FILE_TASK_RESULT"
     fi
     echo "done:$task:$rc" > "$FILE_TASK_STATE"
     [ "$(cat "$FILE_TASK_PID" 2>/dev/null | tr -d ' \r\n')" = "$$" ] && rm -f "$FILE_TASK_PID"
@@ -1088,7 +1088,7 @@ file_task_status() {
             task=${state#running:}
             [ -f "$FILE_TASK_PID" ] && pid=$(cat "$FILE_TASK_PID" 2>/dev/null | tr -d ' \r\n')
             if task_owner_alive "$pid" "__file_worker"; then
-                printf '{"status":"running","task":"%s"}\\n' "$task"
+                printf '{"status":"running","task":"%s"}\n' "$task"
                 return 0
             fi
             state="done:$task:1"
@@ -1102,14 +1102,14 @@ file_task_status() {
         done:scan:0)
             result=$(cat "$FILE_TASK_RESULT" 2>/dev/null)
             if [ -n "$result" ]; then
-                printf '{"status":"done","task":"scan","result":%s}\\n' "$result"
+                printf '{"status":"done","task":"scan","result":%s}\n' "$result"
             else
                 echo '{"status":"error","task":"scan"}'
             fi
             ;;
         done:organize:0)
             result=$(cat "$FILE_TASK_RESULT" 2>/dev/null)
-            [ -n "$result" ] && printf '{"status":"done","task":"organize","result":%s}\\n' "$result" || echo '{"status":"error","task":"organize"}'
+            [ -n "$result" ] && printf '{"status":"done","task":"organize","result":%s}\n' "$result" || echo '{"status":"error","task":"organize"}'
             ;;
         done:*) echo '{"status":"error","task":"unknown","message":"后台任务异常结束，请查看 FileTask.log"}' ;;
         *) echo '{"status":"idle"}' ;;
