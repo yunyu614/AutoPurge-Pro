@@ -43,7 +43,9 @@ jobs:
           AUTOPURGE_MODDIR="$tmp/module" AUTOPURGE_CONFIG_DIR="$tmp/config" \
             sh source/bin/autopurge_ctl.sh set_config apk_cleaning true module_residue_cleaning true > "$tmp/config-result.json"
           test "$(grep -c '^apk_cleaning=' "$tmp/config/配置.conf")" -eq 1
-          grep -q '^apk_cleaning=true
+          grep -q '^apk_cleaning=true$' "$tmp/config/配置.conf"
+          AUTOPURGE_MODDIR="$tmp/module" AUTOPURGE_CONFIG_DIR="$tmp/config" \
+            sh source/bin/autopurge_ctl.sh preview_cleanup > "$tmp/preview.json"
           python3 - "$tmp/preview.json" "$tmp/storage/Download/demo.apk" "$tmp/module/sample.bak" <<'PY'
           import json, os, sys
           with open(sys.argv[1], encoding="utf-8") as f:
