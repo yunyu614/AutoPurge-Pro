@@ -83,6 +83,13 @@ jobs:
             sh source/bin/autopurge_ctl.sh clean manual > "$tmp/clean-result.json"
           test -f "$tmp/outside/Download/escaped.apk"
 
+      - name: Validate KernelSU Modules package and metadata
+        uses: KernelSU-Modules/tools/actions/module-release@e72995777c079c0bb32c49cd6fccd2773ebb0987
+        with:
+          module-dir: source
+          manifest: module.yaml
+          dry-run: true
+
       - name: Check WebUI JavaScript syntax
         run: node --check source/webroot/app.js
 
