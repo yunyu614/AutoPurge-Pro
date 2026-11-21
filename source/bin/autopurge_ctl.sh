@@ -31,6 +31,8 @@ CLEAN_STATE="$CONFIG_DIR/Cleanup.state"
 CLEAN_PID="$CONFIG_DIR/Cleanup.pid"
 CLEAN_WORKER_LOG="$CONFIG_DIR/Cleanup_worker.log"
 CLEAN_LOCK="$CONFIG_DIR/.cleanup.lock"
+CLEAN_TASK_LOCK="$CONFIG_DIR/.cleanup-task.lock"
+FILE_TASK_LOCK="$CONFIG_DIR/.file-task.lock"
 FILE_TASK_STATE="$CONFIG_DIR/FileTask.state"
 FILE_TASK_PID="$CONFIG_DIR/FileTask.pid"
 FILE_TASK_RESULT="$CONFIG_DIR/FileTask.result"
@@ -111,6 +113,16 @@ log_event() {
     # $1=日志文件 $2=行内容
     printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$2" >> "$1"
 }
+
+task_owner_alive() {
+    local pid="$1" marker="$2" cmd=""
+    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+    kill -0 "$pid" 2>/dev/null || return 1
+    [ -r "/proc/$pid/cmdline" ] || return 0
+    cmd=$(tr '\000' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+    case "$cmd" in *"$SCRIPT_PATH"*"$marker"*) return 0 ;; *) return 1 ;; esac
+}
+
 
 # ---------------------------------------------------------------- 环境初始化
 
@@ -914,38 +926,78 @@ get_version_json() {
 # ---------------------------------------------------------------- 清理任务入口
 
 start_cleanup() {
-    local mode="${2:-manual}"
+    local mode="${2:-manual}" owner stale_dir pid
     init_env
-    if [ -f "$CLEAN_STATE" ] && grep -q '^running' "$CLEAN_STATE" 2>/dev/null; then
-        local old_pid=""
-        [ -f "$CLEAN_PID" ] && old_pid=$(cat "$CLEAN_PID" 2>/dev/null | tr -d ' \r\n')
-        if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+    if ! mkdir "$CLEAN_TASK_LOCK" 2>/dev/null; then
+        owner=$(cat "$CLEAN_TASK_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+        case "$owner" in ''|*[!0-9]*) echo '{"status":"already_running"}'; return 0 ;; esac
+        if task_owner_alive "$owner" "__cleanup_worker"; then
             echo '{"status":"already_running"}'
             return 0
         fi
+        stale_dir="$CLEAN_TASK_LOCK.stale.$$"
+        [ ! -e "$stale_dir" ] || { echo '{"status":"already_running"}'; return 0; }
+        if ! mv "$CLEAN_TASK_LOCK" "$stale_dir" 2>/dev/null; then
+            echo '{"status":"already_running"}'
+            return 0
+        fi
+        rm -f "$stale_dir/pid" 2>/dev/null
+        rmdir "$stale_dir" 2>/dev/null
+        mkdir "$CLEAN_TASK_LOCK" 2>/dev/null || { echo '{"status":"already_running"}'; return 0; }
     fi
-    echo running > "$CLEAN_STATE"
+
     rm -f "$CLEAN_PID"
-    (
-        sh "$SCRIPT_PATH" clean "$mode" > "$CLEAN_WORKER_LOG" 2>&1
-        rc=$?
-        echo "done:$rc" > "$CLEAN_STATE"
-        rm -f "$CLEAN_PID"
-    ) </dev/null >/dev/null 2>&1 &
-    echo $! > "$CLEAN_PID"
+    echo running > "$CLEAN_STATE"
+    sh "$SCRIPT_PATH" __cleanup_worker "$mode" </dev/null >/dev/null 2>&1 &
+    pid=$!
+    printf '%s\\n' "$pid" > "$CLEAN_PID" || {
+        kill "$pid" 2>/dev/null
+        rm -f "$CLEAN_STATE" "$CLEAN_PID"
+        rmdir "$CLEAN_TASK_LOCK" 2>/dev/null
+        echo '{"status":"error","message":"cannot record worker PID"}'
+        return 1
+    }
+    printf '%s\\n' "$pid" > "$CLEAN_TASK_LOCK/pid" || {
+        kill "$pid" 2>/dev/null
+        rm -f "$CLEAN_STATE" "$CLEAN_PID"
+        rmdir "$CLEAN_TASK_LOCK" 2>/dev/null
+        echo '{"status":"error","message":"cannot record task lock owner"}'
+        return 1
+    }
     echo '{"status":"started"}'
+}
+
+cleanup_worker() {
+    local mode="${2:-manual}" n=0 owner rc
+    while [ "$n" -lt 10 ]; do
+        owner=$(cat "$CLEAN_TASK_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+        [ "$owner" = "$$" ] && break
+        sleep 1
+        n=$((n+1))
+    done
+    [ "$owner" = "$$" ] || return 1
+    init_env
+    run_cleanup "$mode" > "$CLEAN_WORKER_LOG" 2>&1
+    rc=$?
+    echo "done:$rc" > "$CLEAN_STATE"
+    [ "$(cat "$CLEAN_PID" 2>/dev/null | tr -d ' \r\n')" = "$$" ] && rm -f "$CLEAN_PID"
+    rm -f "$CLEAN_TASK_LOCK/pid" 2>/dev/null
+    rmdir "$CLEAN_TASK_LOCK" 2>/dev/null
+    return "$rc"
 }
 
 cleanup_status() {
     init_env
-    local state="idle" pid=""
+    local state="idle" pid="" owner
     [ -f "$CLEAN_STATE" ] && state=$(cat "$CLEAN_STATE" 2>/dev/null | tr -d ' \r\n')
     if [ "$state" = "running" ]; then
         [ -f "$CLEAN_PID" ] && pid=$(cat "$CLEAN_PID" 2>/dev/null | tr -d ' \r\n')
-        if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+        if ! task_owner_alive "$pid" "__cleanup_worker"; then
             state="done:1"
             echo "$state" > "$CLEAN_STATE"
-            rm -f "$CLEAN_PID"
+            [ "$(cat "$CLEAN_PID" 2>/dev/null | tr -d ' \r\n')" = "$pid" ] && rm -f "$CLEAN_PID"
+            owner=$(cat "$CLEAN_TASK_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+            [ "$owner" = "$pid" ] && { rm -f "$CLEAN_TASK_LOCK/pid"; rmdir "$CLEAN_TASK_LOCK" 2>/dev/null; }
         fi
     fi
     case "$state" in
@@ -957,72 +1009,114 @@ cleanup_status() {
 }
 
 # ---------------------------------------------------------------- 文件任务入口
+# ---------------------------------------------------------------- 文件任务入口
 
 start_file_task() {
-    local task="${2:-scan}"
+    local task="${2:-scan}" owner stale_dir pid
     init_env
     case "$task" in scan|organize) ;; *) echo '{"status":"error","message":"unknown task"}'; return 2 ;; esac
-    if [ -f "$FILE_TASK_STATE" ] && grep -q "^running" "$FILE_TASK_STATE" 2>/dev/null; then
-        local old_pid=""
-        [ -f "$FILE_TASK_PID" ] && old_pid=$(cat "$FILE_TASK_PID" 2>/dev/null | tr -d ' \r\n')
-        if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+    if ! mkdir "$FILE_TASK_LOCK" 2>/dev/null; then
+        owner=$(cat "$FILE_TASK_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+        case "$owner" in ''|*[!0-9]*) echo '{"status":"already_running"}'; return 0 ;; esac
+        if task_owner_alive "$owner" "__file_worker"; then
             echo '{"status":"already_running"}'
             return 0
         fi
-    fi
-    echo "running:$task" > "$FILE_TASK_STATE"
-    rm -f "$FILE_TASK_PID" "$FILE_TASK_RESULT"
-    (
-        if [ "$task" = "scan" ]; then
-            scan_user_files > "$FILE_TASK_RESULT" 2> "$FILE_TASK_LOG"
-            rc=$?
-        else
-            organize_user_files force > "$FILE_TASK_LOG" 2>&1
-            rc=$?
-            printf '{"status":"%s","message":"文件归位任务结束","moved":%s,"failed":%s}\n' "$([ "$rc" -eq 0 ] && echo ok || echo error)" "$ORG_MOVED_COUNT" "$ORG_FAILED_COUNT" > "$FILE_TASK_RESULT"
+        stale_dir="$FILE_TASK_LOCK.stale.$$"
+        [ ! -e "$stale_dir" ] || { echo '{"status":"already_running"}'; return 0; }
+        if ! mv "$FILE_TASK_LOCK" "$stale_dir" 2>/dev/null; then
+            echo '{"status":"already_running"}'
+            return 0
         fi
-        echo "done:$task:$rc" > "$FILE_TASK_STATE"
-        rm -f "$FILE_TASK_PID"
-    ) </dev/null >/dev/null 2>&1 &
-    echo $! > "$FILE_TASK_PID"
+        rm -f "$stale_dir/pid" 2>/dev/null
+        rmdir "$stale_dir" 2>/dev/null
+        mkdir "$FILE_TASK_LOCK" 2>/dev/null || { echo '{"status":"already_running"}'; return 0; }
+    fi
+
+    rm -f "$FILE_TASK_PID" "$FILE_TASK_RESULT"
+    echo "running:$task" > "$FILE_TASK_STATE"
+    sh "$SCRIPT_PATH" __file_worker "$task" </dev/null >/dev/null 2>&1 &
+    pid=$!
+    printf '%s\\n' "$pid" > "$FILE_TASK_PID" || {
+        kill "$pid" 2>/dev/null
+        rm -f "$FILE_TASK_STATE" "$FILE_TASK_PID"
+        rmdir "$FILE_TASK_LOCK" 2>/dev/null
+        echo '{"status":"error","message":"cannot record worker PID"}'
+        return 1
+    }
+    printf '%s\\n' "$pid" > "$FILE_TASK_LOCK/pid" || {
+        kill "$pid" 2>/dev/null
+        rm -f "$FILE_TASK_STATE" "$FILE_TASK_PID"
+        rmdir "$FILE_TASK_LOCK" 2>/dev/null
+        echo '{"status":"error","message":"cannot record task lock owner"}'
+        return 1
+    }
     echo '{"status":"started"}'
+}
+
+file_task_worker() {
+    local task="${2:-scan}" n=0 owner rc=0
+    while [ "$n" -lt 10 ]; do
+        owner=$(cat "$FILE_TASK_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+        [ "$owner" = "$$" ] && break
+        sleep 1
+        n=$((n+1))
+    done
+    [ "$owner" = "$$" ] || return 1
+    init_env
+    if [ "$task" = "scan" ]; then
+        scan_user_files > "$FILE_TASK_RESULT" 2> "$FILE_TASK_LOG"
+        rc=$?
+    else
+        organize_user_files force > "$FILE_TASK_LOG" 2>&1
+        rc=$?
+        printf '{"status":"%s","message":"文件归位任务结束","moved":%s,"failed":%s}\\n' "$([ "$rc" -eq 0 ] && echo ok || echo error)" "$ORG_MOVED_COUNT" "$ORG_FAILED_COUNT" > "$FILE_TASK_RESULT"
+    fi
+    echo "done:$task:$rc" > "$FILE_TASK_STATE"
+    [ "$(cat "$FILE_TASK_PID" 2>/dev/null | tr -d ' \r\n')" = "$$" ] && rm -f "$FILE_TASK_PID"
+    rm -f "$FILE_TASK_LOCK/pid" 2>/dev/null
+    rmdir "$FILE_TASK_LOCK" 2>/dev/null
+    return "$rc"
 }
 
 file_task_status() {
     init_env
-    local state="idle" pid="" task="" result=""
+    local state="idle" pid="" task="" result="" owner
     [ -f "$FILE_TASK_STATE" ] && state=$(cat "$FILE_TASK_STATE" 2>/dev/null | tr -d ' \r\n')
     case "$state" in
         running:*)
             task=${state#running:}
             [ -f "$FILE_TASK_PID" ] && pid=$(cat "$FILE_TASK_PID" 2>/dev/null | tr -d ' \r\n')
-            if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
-                state="done:$task:1"
-                echo "$state" > "$FILE_TASK_STATE"
-            else
-                printf '{"status":"running","task":"%s"}\n' "$task"
+            if task_owner_alive "$pid" "__file_worker"; then
+                printf '{"status":"running","task":"%s"}\\n' "$task"
                 return 0
             fi
+            state="done:$task:1"
+            echo "$state" > "$FILE_TASK_STATE"
+            [ "$(cat "$FILE_TASK_PID" 2>/dev/null | tr -d ' \r\n')" = "$pid" ] && rm -f "$FILE_TASK_PID"
+            owner=$(cat "$FILE_TASK_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+            [ "$owner" = "$pid" ] && { rm -f "$FILE_TASK_LOCK/pid"; rmdir "$FILE_TASK_LOCK" 2>/dev/null; }
             ;;
     esac
     case "$state" in
         done:scan:0)
             result=$(cat "$FILE_TASK_RESULT" 2>/dev/null)
             if [ -n "$result" ]; then
-                printf '{"status":"done","task":"scan","result":%s}\n' "$result"
+                printf '{"status":"done","task":"scan","result":%s}\\n' "$result"
             else
                 echo '{"status":"error","task":"scan"}'
             fi
             ;;
         done:organize:0)
             result=$(cat "$FILE_TASK_RESULT" 2>/dev/null)
-            [ -n "$result" ] && printf '{"status":"done","task":"organize","result":%s}\n' "$result" || echo '{"status":"error","task":"organize"}'
+            [ -n "$result" ] && printf '{"status":"done","task":"organize","result":%s}\\n' "$result" || echo '{"status":"error","task":"organize"}'
             ;;
         done:*) echo '{"status":"error","task":"unknown","message":"后台任务异常结束，请查看 FileTask.log"}' ;;
         *) echo '{"status":"idle"}' ;;
     esac
 }
 
+# ---------------------------------------------------------------- 统计维护
 # ---------------------------------------------------------------- 统计维护
 
 reset_stats() {
@@ -1074,6 +1168,12 @@ case "$1" in
         ;;
     version)
         get_version_json
+        ;;
+    __cleanup_worker)
+        cleanup_worker "$@"
+        ;;
+    __file_worker)
+        file_task_worker "$@"
         ;;
     reset_stats)
         reset_stats
