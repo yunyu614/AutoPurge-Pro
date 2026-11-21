@@ -88,7 +88,7 @@ counter_get() {
 }
 
 counter_set() {
-    local tmp="$COUNTER_FILE.tmp.$"
+    local tmp="$COUNTER_FILE.tmp.$$"
     printf '目录=%d\n文件=%d\n' "$1" "$2" > "$tmp" || { rm -f "$tmp"; return 1; }
     chmod 644 "$tmp" 2>/dev/null
     mv -f "$tmp" "$COUNTER_FILE"
@@ -612,7 +612,7 @@ do_cleanup() {
     total_freed_kb=$((prev_freed + freed_kb))
     now_str=$(date '+%Y-%m-%d %H:%M:%S')
 
-    local stats_tmp="$STATS_JSON.tmp.$"
+    local stats_tmp="$STATS_JSON.tmp.$$"
     cat > "$stats_tmp" <<EOF_STATS2
 {
   "total_files": $after_files,
