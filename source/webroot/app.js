@@ -648,7 +648,7 @@ async function refreshDashboard() {
       },
       schedule: { mode: "daily", interval: 6, interval_unit: "hour", next_run_epoch: 0, scheduler_running: true, t1: "0", m1: "00", w1: "*", t2: "12", m2: "00", w2: "*" },
       stats: {
-        total_files: 1842, total_dirs: 316, total_runs: 28, total_freed_kb: 1482940,
+        total_files: 1842, total_dirs: 316, total_runs: 28, total_freed_kb: 1482940, observed_space_increase_kb: 1482940,
         last_run_files: 64, last_run_dirs: 12, last_clean_time: "2026-11-06 11:30:00",
         bl_count: 492, wl_count: 18, mt_count: 31, log_size_bytes: 18432
       },
