@@ -75,8 +75,13 @@ jobs:
           assert result["count"] == 1, result
           assert all("escaped.apk" not in item["path"] for item in result["items"]), result
           assert os.path.exists(sys.argv[2]), "symlink target candidate was changed"
-          print("symlink escape test passed")
+          print("symlink preview test passed")
           PY
+          AUTOPURGE_MODDIR="$tmp/module" AUTOPURGE_CONFIG_DIR="$tmp/config" \
+            sh source/bin/autopurge_ctl.sh set_config module_residue_cleaning false > /dev/null
+          AUTOPURGE_MODDIR="$tmp/module" AUTOPURGE_CONFIG_DIR="$tmp/config" \
+            sh source/bin/autopurge_ctl.sh clean manual > "$tmp/clean-result.json"
+          test -f "$tmp/outside/Download/escaped.apk"
 
       - name: Check WebUI JavaScript syntax
         run: node --check source/webroot/app.js
