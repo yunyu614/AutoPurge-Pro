@@ -120,7 +120,7 @@ on_install() {
     SET_ORGANIZE="$ASK_RESULT"
 
     ask_feature "2/3" "APK 安装包独立清理" \
-        "删除下载与缓存目录中的安装包，请谨慎开启"
+        "仅清理配置下载目录中的 APK，不清理其他应用私有缓存"
     SET_APK="$ASK_RESULT"
 
     ask_feature "3/3" "卸载模块残留清理" \
