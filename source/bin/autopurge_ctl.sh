@@ -86,7 +86,10 @@ counter_get() {
 }
 
 counter_set() {
-    printf '目录=%d\n文件=%d\n' "$1" "$2" > "$COUNTER_FILE"
+    local tmp="$COUNTER_FILE.tmp.$"
+    printf '目录=%d\n文件=%d\n' "$1" "$2" > "$tmp" || { rm -f "$tmp"; return 1; }
+    chmod 644 "$tmp" 2>/dev/null
+    mv -f "$tmp" "$COUNTER_FILE"
 }
 
 stats_field() {
@@ -303,19 +306,27 @@ organize_source_dirs() {
 # ---------------------------------------------------------------- 清理子任务
 
 clean_apk_packages() {
-    local sw now_str p
+    local sw now_str p download_path
     sw=$(get_conf_val "apk_cleaning" "$MAIN_CONF" "false")
-    [ "$sw" != "true" ] && return 0
+    [ "$sw" = "true" ] || return 0
+
+    # 仅清理用户明确配置的下载目录；不扫描其他应用私有缓存/数据目录。
+    download_path=$(get_path_val download "/storage/emulated/0/Download")
+    [ -d "$download_path" ] || return 0
+    [ ! -L "$download_path" ] || {
+        log_event "$CLEAR_LOG" "[APK清理] 跳过符号链接目录: $download_path"
+        return 0
+    }
+
     now_str=$(date '+%Y-%m-%d %H:%M:%S')
-    for p in /sdcard/Download /sdcard/Android/data/*/cache /sdcard/Android/data/*/files/Download; do
-        [ -d "$p" ] || continue
-        find "$p" -maxdepth 2 -type f -name "*.apk" 2>/dev/null | while IFS= read -r apk; do
-            [ -f "$apk" ] || continue
-            if rm -f "$apk" 2>/dev/null; then
-                printf '%s %s\n' "$now_str" "[APK清理] 删除安装包: $apk" >> "$CLEAR_LOG"
-                printf '%s | APK清理 | %s\n' "$now_str" "$apk" >> "$HISTORY_LOG"
-            fi
-        done
+    find "$download_path" -maxdepth 2 -type f -name "*.apk" -print 2>/dev/null |
+    while IFS= read -r apk; do
+        [ -f "$apk" ] && [ ! -L "$apk" ] || continue
+        case "$apk" in "$download_path"/*) ;; *) continue ;; esac
+        if rm -f "$apk" 2>/dev/null; then
+            printf '%s %s\n' "$now_str" "[APK清理] 删除安装包: $apk" >> "$CLEAR_LOG"
+            printf '%s | APK清理 | %s\n' "$now_str" "$apk" >> "$HISTORY_LOG"
+        fi
     done
 }
 
@@ -577,10 +588,10 @@ do_cleanup() {
     local after_avail freed_kb
     after_avail=$(df -k /data 2>/dev/null | tail -n1 | awk '{print $4}')
     case "$after_avail" in ''|*[!0-9]*) after_avail="$before_avail" ;; esac
+    # df 差值只能表示 /data 可用空间变化，不能归因于本模块。
+    # 不再用文件数估算释放空间；异常/负值统一记为 0，避免制造虚假释放量。
     freed_kb=$((after_avail - before_avail))
-    if [ "$freed_kb" -le 0 ]; then
-        freed_kb=$((run_files * 64 + run_dirs * 16))
-    fi
+    [ "$freed_kb" -lt 0 ] && freed_kb=0
 
     local prev_runs prev_freed total_runs total_freed_kb now_str
     prev_runs=$(stats_field "total_runs" 0)
@@ -589,7 +600,8 @@ do_cleanup() {
     total_freed_kb=$((prev_freed + freed_kb))
     now_str=$(date '+%Y-%m-%d %H:%M:%S')
 
-    cat > "$STATS_JSON" <<EOF_STATS2
+    local stats_tmp="$STATS_JSON.tmp.$"
+    cat > "$stats_tmp" <<EOF_STATS2
 {
   "total_files": $after_files,
   "total_dirs": $after_dirs,
@@ -598,10 +610,18 @@ do_cleanup() {
   "last_run_files": $run_files,
   "last_run_dirs": $run_dirs,
   "last_run_freed_kb": $freed_kb,
+  "last_run_space_delta_kb": $freed_kb,
+  "space_metric": "filesystem_available_delta",
   "last_clean_time": "$now_str"
 }
 EOF_STATS2
-    chmod 644 "$STATS_JSON" "$HISTORY_LOG" "$COUNTER_FILE" "$CLEAR_LOG" 2>/dev/null
+    if [ -s "$stats_tmp" ]; then
+        chmod 644 "$stats_tmp" 2>/dev/null
+        mv -f "$stats_tmp" "$STATS_JSON" || rm -f "$stats_tmp"
+    else
+        rm -f "$stats_tmp"
+    fi
+    chmod 644 "$HISTORY_LOG" "$COUNTER_FILE" "$CLEAR_LOG" 2>/dev/null
     sync_module_prop
     printf '{"status":"ok","run_files":%s,"run_dirs":%s,"freed_kb":%s,"time":"%s"}\n' "$run_files" "$run_dirs" "$freed_kb" "$now_str"
 }
@@ -762,6 +782,18 @@ get_status_json() {
     t2=$(get_conf_val "Set_Time2" "$TIMING_CONF" "12")
     m2=$(get_conf_val "Set_minute2" "$TIMING_CONF" "00")
     w2=$(get_conf_val "Set_weekday2" "$TIMING_CONF" "*")
+
+    # 配置值进入 JSON 前统一做白名单校验，避免手工配置破坏 JSON。
+    case "$t1" in ''|*[!0-9]*) t1=0 ;; esac
+    [ "$t1" -le 23 ] 2>/dev/null || t1=0
+    case "$m1" in ''|*[!0-9]*) m1=0 ;; esac
+    [ "$m1" -le 59 ] 2>/dev/null || m1=0
+    case "$w1" in 1|2|3|4|5|6|7|'*') ;; *) w1='*' ;; esac
+    case "$t2" in ''|*[!0-9]*) t2=12 ;; esac
+    [ "$t2" -le 23 ] 2>/dev/null || t2=12
+    case "$m2" in ''|*[!0-9]*) m2=0 ;; esac
+    [ "$m2" -le 59 ] 2>/dev/null || m2=0
+    case "$w2" in 1|2|3|4|5|6|7|'*') ;; *) w2='*' ;; esac
 
     local dirs files
     dirs=$(counter_get "目录")
