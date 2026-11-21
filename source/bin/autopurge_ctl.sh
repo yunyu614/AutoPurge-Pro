@@ -316,23 +316,29 @@ clean_apk_packages() {
 }
 
 clean_module_residues() {
-    local sw now_str root stale
+    local sw now_str stale
     sw=$(get_conf_val "module_residue_cleaning" "$MAIN_CONF" "false")
-    [ "$sw" != "true" ] && return 0
+    [ "$sw" = "true" ] || return 0
+
+    # 安全边界：只处理当前 AutoPurge-Pro 模块自身目录。
+    # 不扫描其他模块目录，也不触碰 modules_update / service.d / post-fs-data.d。
+    [ -n "$MODDIR" ] && [ -d "$MODDIR" ] && [ ! -L "$MODDIR" ] || {
+        log_event "$CLEAR_LOG" "[模块残留] 跳过：模块目录无效或为符号链接"
+        return 0
+    }
+
     now_str=$(date '+%Y-%m-%d %H:%M:%S')
-    # 只清理模块目录内明确的备份文件；不清空 modules_update，避免删除待安装更新。
-    for root in /data/adb/modules /data/adb/ksu/modules /data/adb/ap/modules; do
-        [ -d "$root" ] || continue
-        find "$root" -type f \( -name "*.bak" -o -name "*.backup" \) -print 2>/dev/null | while IFS= read -r stale; do
-            [ -f "$stale" ] || continue
-            if rm -f "$stale" 2>/dev/null; then
-                printf '%s %s\n' "$now_str" "[模块残留] 删除备份文件: $stale" >> "$CLEAR_LOG"
-                printf '%s | 模块残留 | %s\n' "$now_str" "$stale" >> "$HISTORY_LOG"
-            fi
-        done
-    done
-    for root in /data/adb/modules_update /data/adb/ksu/modules_update /data/adb/ap/modules_update; do
-        [ ! -d "$root" ] || printf '%s [模块残留] 保留更新暂存目录: %s\n' "$now_str" "$root" >> "$CLEAR_LOG"
+    find "$MODDIR" -type f \( -name "*.bak" -o -name "*.backup" \) -print 2>/dev/null |
+    while IFS= read -r stale; do
+        [ -f "$stale" ] && [ ! -L "$stale" ] || continue
+        case "$stale" in
+            "$MODDIR"/*) ;;
+            *) continue ;;
+        esac
+        if rm -f "$stale" 2>/dev/null; then
+            printf '%s %s\n' "$now_str" "[模块残留] 删除本模块备份文件: $stale" >> "$CLEAR_LOG"
+            printf '%s | 模块残留 | %s\n' "$now_str" "$stale" >> "$HISTORY_LOG"
+        fi
     done
 }
 
@@ -402,25 +408,54 @@ scan_user_files() {
 
 # ---------------------------------------------------------------- 清理主流程
 
+clean_lock_owner_alive() {
+    local owner="$1" cmd=""
+    case "$owner" in ''|*[!0-9]*) return 1 ;; esac
+    kill -0 "$owner" 2>/dev/null || return 1
+    # PID 存活但无法确认进程身份时，按“仍在运行”处理，避免误回收锁。
+    [ -r "/proc/$owner/cmdline" ] || return 0
+    cmd=$(tr '\000' ' ' < "/proc/$owner/cmdline" 2>/dev/null)
+    case "$cmd" in
+        *"$SCRIPT_PATH"*clean*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 acquire_clean_lock() {
+    local owner stale_dir
     if mkdir "$CLEAN_LOCK" 2>/dev/null; then
-        date '+%s' > "$CLEAN_LOCK/ts" 2>/dev/null
+        printf '%s\n' "$$" > "$CLEAN_LOCK/pid" 2>/dev/null || {
+            rmdir "$CLEAN_LOCK" 2>/dev/null
+            return 1
+        }
         return 0
     fi
-    # 陈旧锁（超过 40 分钟）自动回收
-    local now ts
-    now=$(date '+%s')
-    ts=$(cat "$CLEAN_LOCK/ts" 2>/dev/null | tr -d ' \r\n')
-    case "$ts" in ''|*[!0-9]*) ts=0 ;; esac
-    if [ $((now - ts)) -gt 2400 ]; then
-        rm -rf "$CLEAN_LOCK"
-        mkdir "$CLEAN_LOCK" 2>/dev/null && { date '+%s' > "$CLEAN_LOCK/ts" 2>/dev/null; return 0; }
+
+    owner=$(cat "$CLEAN_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+    if [ -z "$owner" ] || ! clean_lock_owner_alive "$owner"; then
+        # 同文件系统 rename 争抢陈旧锁所有权；仅一个竞争者能成功。
+        stale_dir="$CLEAN_LOCK.stale.$$"
+        if mv "$CLEAN_LOCK" "$stale_dir" 2>/dev/null; then
+            rm -f "$stale_dir/pid" 2>/dev/null
+            rmdir "$stale_dir" 2>/dev/null
+            if mkdir "$CLEAN_LOCK" 2>/dev/null; then
+                printf '%s\n' "$$" > "$CLEAN_LOCK/pid" 2>/dev/null || {
+                    rmdir "$CLEAN_LOCK" 2>/dev/null
+                    return 1
+                }
+                return 0
+            fi
+        fi
     fi
     return 1
 }
 
 release_clean_lock() {
-    rm -rf "$CLEAN_LOCK"
+    local owner
+    owner=$(cat "$CLEAN_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+    [ "$owner" = "$$" ] || return 0
+    rm -f "$CLEAN_LOCK/pid" 2>/dev/null
+    rmdir "$CLEAN_LOCK" 2>/dev/null
 }
 
 do_cleanup() {
