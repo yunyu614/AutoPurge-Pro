@@ -17,6 +17,7 @@
 - [ ] APK 清理开启时，只列出 FilePaths.conf 中 download 路径下的 APK。
 - [ ] download 指向 storage_root 之外时，清理和预览均跳过。
 - [ ] download 或文件整理来源/目标路径经过 storage_root 内的符号链接时，清理、预览和扫描/归档均跳过该路径。
+- [ ] download 或文件整理来源/目标路径经过 storage_root 内的符号链接时，清理、预览和扫描/归档均跳过该路径。
 - [ ] storage_root 指向 /data、/data/adb、/system、/vendor、/proc、/sys 或 /dev 时，文件操作应被阻止。
 - [ ] 模块残留清理开启时，只列出当前 AutoPurge-Pro 模块目录中的 .bak/.backup。
 - [ ] 其他模块目录、modules_update、service.d、post-fs-data.d 中的备份文件不得被删除。
