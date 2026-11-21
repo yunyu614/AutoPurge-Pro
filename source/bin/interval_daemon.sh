@@ -115,7 +115,7 @@ acquire_daemon_lock() {
         rm -f "$stale_dir/pid" 2>/dev/null
         rmdir "$stale_dir" 2>/dev/null
         if mkdir "$LOCK_DIR" 2>/dev/null; then
-            printf '%s\n' "$" > "$LOCK_DIR/pid" 2>/dev/null || {
+            printf '%s\n' "$$" > "$LOCK_DIR/pid" 2>/dev/null || {
                 rmdir "$LOCK_DIR" 2>/dev/null
                 return 1
             }
