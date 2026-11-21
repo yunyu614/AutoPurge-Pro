@@ -86,12 +86,62 @@ get_path_val() {
 }
 
 set_conf_val() {
-    # $1=key $2=val $3=file
-    if grep -qE "^[[:space:]]*$1[[:space:]]*=" "$3" 2>/dev/null; then
-        sed -i "s|^[[:space:]]*$1[[:space:]]*=.*|$1=$2|g" "$3"
-    else
-        printf '%s=%s\n' "$1" "$2" >> "$3"
-    fi
+    # $1=key $2=value $3=file；仅允许白名单键和值，临时文件替换避免半写入。
+    local key="$1" value="$2" file="$3" tmp
+    case "$key" in
+        master_switch|timed_cleaning|mt_cleaning|log_cleaning|apk_cleaning|module_residue_cleaning|file_organize|blacklist_cleaning)
+            case "$value" in true|false) ;; *) return 1 ;; esac
+            ;;
+        log_purge_size)
+            case "$value" in 512K|1M|2M|5M|10M) ;; *) return 1 ;; esac
+            ;;
+        *) return 1 ;;
+    esac
+    tmp="$file.tmp.$"
+    awk -v key="$key" -v value="$value" '
+        BEGIN { updated = 0 }
+        $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+            if (!updated) { print key "=" value; updated = 1 }
+            next
+        }
+        { print }
+        END { if (!updated) print key "=" value }
+    ' "$file" > "$tmp" || { rm -f "$tmp"; return 1; }
+    chmod 644 "$tmp" 2>/dev/null
+    mv -f "$tmp" "$file"
+}
+
+set_config_cmd() {
+    init_env
+    local tmp key value changed=0
+    [ "$#" -ge 3 ] || { echo '{"status":"error","message":"missing key/value"}'; return 2; }
+    shift
+    tmp="$MAIN_CONF.batch.$"
+    cp "$MAIN_CONF" "$tmp" 2>/dev/null || { echo '{"status":"error","message":"cannot stage config"}'; return 1; }
+    while [ "$#" -ge 2 ]; do
+        key="$1"
+        value="$2"
+        shift 2
+        set_conf_val "$key" "$value" "$tmp" || {
+            rm -f "$tmp"
+            echo '{"status":"error","message":"invalid config key/value"}'
+            return 2
+        }
+        changed=1
+    done
+    [ "$#" -eq 0 ] && [ "$changed" -eq 1 ] || {
+        rm -f "$tmp"
+        echo '{"status":"error","message":"invalid config arguments"}'
+        return 2
+    }
+    chmod 644 "$tmp" 2>/dev/null
+    mv -f "$tmp" "$MAIN_CONF" || {
+        rm -f "$tmp"
+        echo '{"status":"error","message":"config replace failed"}'
+        return 1
+    }
+    sync_module_prop
+    echo '{"status":"ok"}'
 }
 
 counter_get() {
@@ -1301,6 +1351,9 @@ case "$1" in
         ;;
     apply)
         apply_services
+        ;;
+    set_config)
+        set_config_cmd "$@"
         ;;
     preview_cleanup)
         preview_cleanup
