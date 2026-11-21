@@ -240,7 +240,6 @@ organize_target_get() {
 }
 
 move_one_file() {
-    # $1=源文件 $2=目标目录；重名自动追加 (n)
     local f="$1" dest="$2" name base ext n target
     [ -f "$f" ] || return 0
     name="$(basename "$f")"
@@ -254,9 +253,14 @@ move_one_file() {
         target="$dest/${base} (${n})${ext}"
     fi
     if mv "$f" "$target" 2>/dev/null; then
+        ORG_MOVED_COUNT=$((ORG_MOVED_COUNT + 1))
         log_event "$CLEAR_LOG" "[文件归位] $f -> $target"
         log_event "$HISTORY_LOG" "| 文件归位 | $f -> $target"
+        return 0
     fi
+    ORG_FAILED_COUNT=$((ORG_FAILED_COUNT + 1))
+    log_event "$CLEAR_LOG" "[文件归位失败] $f -> $target"
+    return 1
 }
 
 classify_file() {
@@ -363,31 +367,43 @@ log_mt_output() {
 # ---------------------------------------------------------------- 文件整理主流程
 
 organize_user_files() {
-    local sw
+    local sw src f list_tmp source_tmp rc=0
+    ORG_MOVED_COUNT=0
+    ORG_FAILED_COUNT=0
     sw=$(get_conf_val "file_organize" "$MAIN_CONF" "false")
     [ "$sw" != "true" ] && [ "$1" != "force" ] && return 0
     organize_target_get
-    mkdir -p "$ORG_IMG" "$ORG_VID" "$ORG_AUD" "$ORG_APK" "$ORG_MOD" 2>/dev/null
+    mkdir -p "$ORG_IMG" "$ORG_VID" "$ORG_AUD" "$ORG_APK" "$ORG_MOD" 2>/dev/null || return 1
 
-    local src
-    organize_source_dirs | while IFS= read -r src; do
+    # 每个任务使用独立临时文件，避免并发扫描/整理互相覆盖。
+    list_tmp="$CONFIG_DIR/.organize_list.$$"
+    source_tmp="$CONFIG_DIR/.organize_sources.$$"
+    : > "$list_tmp" || return 1
+    organize_source_dirs > "$source_tmp" || { rm -f "$list_tmp" "$source_tmp"; return 1; }
+    while IFS= read -r src; do
         [ -d "$src" ] || continue
-        find "$src" -maxdepth 2 -type f 2>/dev/null | while IFS= read -r f; do
-            classify_file "$f"
-        done
-    done
+        find "$src" -maxdepth 2 -type f 2>/dev/null >> "$list_tmp" || rc=1
+    done < "$source_tmp"
+    while IFS= read -r f; do
+        [ -f "$f" ] || continue
+        classify_file "$f" || :
+    done < "$list_tmp"
+    rm -f "$list_tmp" "$source_tmp"
+    [ "$ORG_FAILED_COUNT" -eq 0 ] || rc=1
+    return "$rc"
 }
 
 scan_user_files() {
-    # 先收集完整文件列表到临时文件，再在主 shell 内逐行分类，
-    # 避免管道子 shell 造成的计数丢失。
-    local list_tmp f ext
-    list_tmp="$CONFIG_DIR/.scan_list.tmp"
-    : > "$list_tmp"
-    organize_source_dirs | while IFS= read -r src; do
+    # 独立临时文件避免并发任务互相覆盖；文件名含换行符不在当前格式支持范围内。
+    local list_tmp source_tmp src f ext
+    list_tmp="$CONFIG_DIR/.scan_list.$$"
+    source_tmp="$CONFIG_DIR/.scan_sources.$$"
+    : > "$list_tmp" || return 1
+    organize_source_dirs > "$source_tmp" || { rm -f "$list_tmp" "$source_tmp"; return 1; }
+    while IFS= read -r src; do
         [ -d "$src" ] || continue
-        find "$src" -maxdepth 2 -type f 2>/dev/null
-    done > "$list_tmp"
+        find "$src" -maxdepth 2 -type f 2>/dev/null >> "$list_tmp" || :
+    done < "$source_tmp"
 
     local total=0 images=0 videos=0 audio=0 apks=0 archives=0
     while IFS= read -r f; do
@@ -402,10 +418,11 @@ scan_user_files() {
             zip|7z|rar|tar|gz|bz2|xz) archives=$((archives+1)) ;;
         esac
     done < "$list_tmp"
-    rm -f "$list_tmp"
+    rm -f "$list_tmp" "$source_tmp"
     printf '{"status":"ok","total":%s,"images":%s,"videos":%s,"audio":%s,"apks":%s,"archives":%s}\n' "$total" "$images" "$videos" "$audio" "$apks" "$archives"
 }
 
+# ---------------------------------------------------------------- 清理主流程
 # ---------------------------------------------------------------- 清理主流程
 
 clean_lock_owner_alive() {
@@ -930,7 +947,7 @@ start_file_task() {
         else
             organize_user_files force > "$FILE_TASK_LOG" 2>&1
             rc=$?
-            printf '{"status":"ok","message":"文件归位任务已执行"}\n' > "$FILE_TASK_RESULT"
+            printf '{"status":"%s","message":"文件归位任务结束","moved":%s,"failed":%s}\n' "$([ "$rc" -eq 0 ] && echo ok || echo error)" "$ORG_MOVED_COUNT" "$ORG_FAILED_COUNT" > "$FILE_TASK_RESULT"
         fi
         echo "done:$task:$rc" > "$FILE_TASK_STATE"
         rm -f "$FILE_TASK_PID"
@@ -965,7 +982,10 @@ file_task_status() {
                 echo '{"status":"error","task":"scan"}'
             fi
             ;;
-        done:organize:0) echo '{"status":"done","task":"organize"}' ;;
+        done:organize:0)
+            result=$(cat "$FILE_TASK_RESULT" 2>/dev/null)
+            [ -n "$result" ] && printf '{"status":"done","task":"organize","result":%s}\n' "$result" || echo '{"status":"error","task":"organize"}'
+            ;;
         done:*) echo '{"status":"error","task":"unknown","message":"后台任务异常结束，请查看 FileTask.log"}' ;;
         *) echo '{"status":"idle"}' ;;
     esac
