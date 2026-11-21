@@ -59,6 +59,16 @@ path_is_child_of() {
     case "$1" in "$2"/*) return 0 ;; *) return 1 ;; esac
 }
 
+is_protected_system_path() {
+    case "$1" in
+        /|/data|/data/adb|/data/adb/*|/data/system|/data/system/*|/system|/system/*|/vendor|/vendor/*|/proc|/proc/*|/sys|/sys/*|/dev|/dev/*|/apex|/apex/*|/metadata|/metadata/*)
+            return 0 ;;
+        /data/media/0|/data/media/0/*)
+            return 1 ;;
+        *) return 1 ;;
+    esac
+}
+
 get_path_val() {
     # 读取 FilePaths.conf 中的路径并做安全校验，非法值回退默认。
     local key="$1" default_val="$2" val
@@ -290,11 +300,17 @@ organize_target_get() {
     # 设置 organize 目标目录到全局变量（供 move/scan 使用）
     ORG_ROOT=$(get_path_val storage_root /storage/emulated/0)
     [ -d "$ORG_ROOT" ] || ORG_ROOT="/sdcard"
+    if is_protected_system_path "$ORG_ROOT"; then ORG_ROOT="/storage/emulated/0"; fi
     ORG_IMG=$(get_path_val images "$ORG_ROOT/Pictures/AutoPurge")
     ORG_VID=$(get_path_val videos "$ORG_ROOT/Movies/AutoPurge")
     ORG_AUD=$(get_path_val audio "$ORG_ROOT/Music/AutoPurge")
     ORG_APK=$(get_path_val apks "$ORG_ROOT/安装包/AutoPurge")
     ORG_MOD=$(get_path_val modules "$ORG_ROOT/模块安装包/AutoPurge")
+    path_is_child_of "$ORG_IMG" "$ORG_ROOT" || ORG_IMG="$ORG_ROOT/Pictures/AutoPurge"
+    path_is_child_of "$ORG_VID" "$ORG_ROOT" || ORG_VID="$ORG_ROOT/Movies/AutoPurge"
+    path_is_child_of "$ORG_AUD" "$ORG_ROOT" || ORG_AUD="$ORG_ROOT/Music/AutoPurge"
+    path_is_child_of "$ORG_APK" "$ORG_ROOT" || ORG_APK="$ORG_ROOT/安装包/AutoPurge"
+    path_is_child_of "$ORG_MOD" "$ORG_ROOT" || ORG_MOD="$ORG_ROOT/模块安装包/AutoPurge"
 }
 
 move_one_file() {
@@ -343,11 +359,13 @@ organize_source_dirs() {
     local root
     root=$(get_path_val storage_root /storage/emulated/0)
     [ -d "$root" ] || root="/sdcard"
-    get_path_val download "$root/Download"
-    get_path_val qq "$root/QQfile_recv"
-    get_path_val wechat "$root/WeChat"
-    get_path_val telegram "$root/Telegram"
-    get_path_val bluetooth "$root/Bluetooth"
+    if is_protected_system_path "$root"; then root="/storage/emulated/0"; fi
+    local p
+    p=$(get_path_val download "$root/Download"); path_is_child_of "$p" "$root" || p="$root/Download"; printf '%s\\n' "$p"
+    p=$(get_path_val qq "$root/QQfile_recv"); path_is_child_of "$p" "$root" || p="$root/QQfile_recv"; printf '%s\\n' "$p"
+    p=$(get_path_val wechat "$root/WeChat"); path_is_child_of "$p" "$root" || p="$root/WeChat"; printf '%s\\n' "$p"
+    p=$(get_path_val telegram "$root/Telegram"); path_is_child_of "$p" "$root" || p="$root/Telegram"; printf '%s\\n' "$p"
+    p=$(get_path_val bluetooth "$root/Bluetooth"); path_is_child_of "$p" "$root" || p="$root/Bluetooth"; printf '%s\\n' "$p"
     printf '%s\n' \
         "$root/Tencent/QQfile_recv" \
         "$root/Android/data/com.tencent.mobileqq/Tencent/QQfile_recv" \
