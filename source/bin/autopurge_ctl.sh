@@ -275,7 +275,7 @@ init_env() {
     if [ ! -f "$MAIN_CONF" ]; then
         init_tmp="$MAIN_CONF.init.$$"
         cat > "$init_tmp" <<'EOF_MAINCONF'
- // AutoPurge Pro 全局配置文件 (Author: liancan)
+// AutoPurge Pro 全局配置文件 (Author: liancan)
 master_switch=true
 timed_cleaning=true
 mt_cleaning=true
