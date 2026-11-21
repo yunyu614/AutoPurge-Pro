@@ -176,14 +176,13 @@ write_pid() {
 
 log_line() {
     [ -f "$LOG_FILE" ] || : > "$LOG_FILE" 2>/dev/null
-    printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$LOG_FILE" 2>/dev/null
-    # 日志超过约 64KB 时只保留最后 200 行
     local size
     size=$(wc -c < "$LOG_FILE" 2>/dev/null | tr -d ' ')
-    case "$size" in ''|*[!0-9]*) return 0 ;; esac
-    if [ "$size" -gt 65536 ]; then
-        tail -n 200 "$LOG_FILE" > "$LOG_FILE.tmp" 2>/dev/null && mv -f "$LOG_FILE.tmp" "$LOG_FILE" 2>/dev/null
+    case "$size" in ''|*[!0-9]*) size=0 ;; esac
+    if [ "$size" -gt 1048576 ]; then
+        mv -f "$LOG_FILE" "$LOG_FILE.1" 2>/dev/null && : > "$LOG_FILE"
     fi
+    printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$LOG_FILE" 2>/dev/null
 }
 
 enabled_now() {
