@@ -1313,6 +1313,7 @@ case "$1" in
         init_env
         : > "$CLEAR_LOG"
         : > "$HISTORY_LOG"
+        rm -f "$CLEAR_LOG.1" "$HISTORY_LOG.1"
         echo '{"status":"ok"}'
         ;;
     *)
