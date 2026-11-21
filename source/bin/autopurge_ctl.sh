@@ -432,9 +432,13 @@ acquire_clean_lock() {
     fi
 
     owner=$(cat "$CLEAN_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
-    if [ -z "$owner" ] || ! clean_lock_owner_alive "$owner"; then
+    # 空锁目录可能正处于“mkdir 成功、写入 PID”窗口；不自动回收，
+    # 避免两个清理进程同时获得锁。此类异常残留需人工检查后处理。
+    case "$owner" in ''|*[!0-9]*) return 1 ;; esac
+    if ! clean_lock_owner_alive "$owner"; then
         # 同文件系统 rename 争抢陈旧锁所有权；仅一个竞争者能成功。
         stale_dir="$CLEAN_LOCK.stale.$$"
+        [ ! -e "$stale_dir" ] || return 1
         if mv "$CLEAN_LOCK" "$stale_dir" 2>/dev/null; then
             rm -f "$stale_dir/pid" 2>/dev/null
             rmdir "$stale_dir" 2>/dev/null
