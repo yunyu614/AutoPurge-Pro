@@ -138,7 +138,7 @@ reclaim_stale_task_lock() {
         rmdir "$recovery" 2>/dev/null
         return 1
     fi
-    stale_dir="$lock.stale.$"
+    stale_dir="$lock.stale.$$"
     if [ -e "$stale_dir" ] || ! mv "$lock" "$stale_dir" 2>/dev/null; then
         rmdir "$recovery" 2>/dev/null
         return 1
@@ -514,7 +514,7 @@ acquire_clean_lock() {
     case "$owner" in ''|*[!0-9]*) return 1 ;; esac
     if reclaim_stale_task_lock "$CLEAN_LOCK" "clean"; then
         if mkdir "$CLEAN_LOCK" 2>/dev/null; then
-            printf '%s\n' "$" > "$CLEAN_LOCK/pid" 2>/dev/null || {
+            printf '%s\n' "$$" > "$CLEAN_LOCK/pid" 2>/dev/null || {
                 rmdir "$CLEAN_LOCK" 2>/dev/null
                 return 1
             }
@@ -951,7 +951,7 @@ EOF_STATUS
 preview_cleanup() {
     init_env
     local list_tmp path size count=0 bytes=0 shown=0 first=1 kind download_path apk_sw residue_sw
-    list_tmp="$CONFIG_DIR/.preview_list.$"
+    list_tmp="$CONFIG_DIR/.preview_list.$$"
     : > "$list_tmp" || { echo '{"status":"error","message":"cannot create preview list"}'; return 1; }
 
     apk_sw=$(get_conf_val "apk_cleaning" "$MAIN_CONF" "false")
