@@ -1,0 +1,82 @@
+name: Publish AutoPurge Pro Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Read version and avoid duplicate release
+        id: meta
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version=//p' source/module.prop | head -n 1)"
+          version_code="$(sed -n 's/^versionCode=//p' source/module.prop | head -n 1)"
+          test -n "$version"
+          tag="v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build release ZIP
+        if: steps.meta.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          package="AutoPurge_Pro_v${{ steps.meta.outputs.version }}.zip"
+          (
+            cd source
+            zip -qr "../dist/$package" . \
+              -x '*.DS_Store' '*/.DS_Store' '*.tmp' '*/.tmp'
+          )
+          unzip -t "dist/$package"
+
+      - name: Publish GitHub Release
+        if: steps.meta.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: AutoPurge Pro ${{ steps.meta.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          draft: false
+          prerelease: false
+          make_latest: true
+          files: dist/AutoPurge_Pro_v${{ steps.meta.outputs.version }}.zip
+          body: |
+            # AutoPurge Pro ${{ steps.meta.outputs.tag }}
+
+            - 版本号：${{ steps.meta.outputs.version }}
+            - versionCode：${{ steps.meta.outputs.version_code }}
+            - 安装包：`AutoPurge_Pro_v${{ steps.meta.outputs.version }}.zip`
+
+            ## 本次更新
+            - 强化清理锁、后台 worker 与间隔守护进程的生命周期管理及并发保护。
+            - 配置更新增加校验、重复键归一化和原子写入。
+            - 限定 APK 清理范围，增加系统路径与符号链接逃逸保护。
+            - 文件整理按实际移动/失败数量反馈，避免扫描失败被误报成功。
+            - 新增非破坏性清理预览和日志轮转。
+            - 优化 WebUI 布局、触控区域、窄屏适配及安全提示。
+
+            ## 验证与说明
+            - GitHub Actions 静态检查与模块 ZIP 构建通过。
+            - 作者已在 Android 真机上完成实际功能验证。
+            - 五个预编译闭源二进制保持不变；其内部 Counter 写入行为无法从源码审计，不承诺跨进程统计强一致性。
+            - 建议升级前备份模块配置、名单及统计文件。
