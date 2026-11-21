@@ -436,25 +436,26 @@ classify_file() {
 }
 
 organize_source_dirs() {
-    # 输出全部扫描来源目录（每行一个）
-    local root
+    # 输出全部扫描来源目录（每行一个）；遇到符号链接组件时跳过，防止扫描逃出存储根目录。
+    local root p
     root=$(get_path_val storage_root /storage/emulated/0)
     [ -d "$root" ] || root="/sdcard"
     if is_protected_system_path "$root"; then root="/storage/emulated/0"; fi
-    local p
-    p=$(get_path_val download "$root/Download"); path_is_child_of "$p" "$root" || p="$root/Download"; printf '%s\n' "$p"
-    p=$(get_path_val qq "$root/QQfile_recv"); path_is_child_of "$p" "$root" || p="$root/QQfile_recv"; printf '%s\n' "$p"
-    p=$(get_path_val wechat "$root/WeChat"); path_is_child_of "$p" "$root" || p="$root/WeChat"; printf '%s\n' "$p"
-    p=$(get_path_val telegram "$root/Telegram"); path_is_child_of "$p" "$root" || p="$root/Telegram"; printf '%s\n' "$p"
-    p=$(get_path_val bluetooth "$root/Bluetooth"); path_is_child_of "$p" "$root" || p="$root/Bluetooth"; printf '%s\n' "$p"
-    printf '%s\n' \
+    p=$(get_path_val download "$root/Download"); path_is_child_of "$p" "$root" && ! path_has_symlink_component "$p" "$root" || p="$root/Download"; path_has_symlink_component "$p" "$root" || printf '%s\n' "$p"
+    p=$(get_path_val qq "$root/QQfile_recv"); path_is_child_of "$p" "$root" && ! path_has_symlink_component "$p" "$root" || p="$root/QQfile_recv"; path_has_symlink_component "$p" "$root" || printf '%s\n' "$p"
+    p=$(get_path_val wechat "$root/WeChat"); path_is_child_of "$p" "$root" && ! path_has_symlink_component "$p" "$root" || p="$root/WeChat"; path_has_symlink_component "$p" "$root" || printf '%s\n' "$p"
+    p=$(get_path_val telegram "$root/Telegram"); path_is_child_of "$p" "$root" && ! path_has_symlink_component "$p" "$root" || p="$root/Telegram"; path_has_symlink_component "$p" "$root" || printf '%s\n' "$p"
+    p=$(get_path_val bluetooth "$root/Bluetooth"); path_is_child_of "$p" "$root" && ! path_has_symlink_component "$p" "$root" || p="$root/Bluetooth"; path_has_symlink_component "$p" "$root" || printf '%s\n' "$p"
+    for p in \
         "$root/Tencent/QQfile_recv" \
         "$root/Android/data/com.tencent.mobileqq/Tencent/QQfile_recv" \
         "$root/Android/data/com.tencent.mm/MicroMsg/Download" \
         "$root/Android/data/org.telegram.messenger/files/Telegram" \
         "$root/Telegram/Telegram Documents" \
         "$root/Telegram/Telegram Images" \
-        "$root/Telegram/Telegram Video"
+        "$root/Telegram/Telegram Video"; do
+        path_has_symlink_component "$p" "$root" || printf '%s\n' "$p"
+    done
 }
 
 # ---------------------------------------------------------------- 清理子任务
