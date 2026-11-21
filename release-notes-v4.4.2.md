@@ -1,3 +1,5 @@
+<!-- Historical release note: this file documents the v4.4.2 release only. See README.md for the project overview. -->
+
 # AutoPurge Pro v4.4.2
 
 - 版本号：`4.4.2`
