@@ -20,5 +20,5 @@ jobs:
         with:
           module-dir: source
           manifest: module.yaml
-          release-notes-file: CHANGELOG.md
+          release-notes-file: release-notes-v4.4.4.md
           require-immutable: true
