@@ -99,13 +99,13 @@ read_pid() {
 acquire_daemon_lock() {
     local owner stale_dir
     if mkdir "$LOCK_DIR" 2>/dev/null; then
-        printf '%s\\n' "$" > "$LOCK_DIR/pid" 2>/dev/null || {
+        printf '%s\n' "$" > "$LOCK_DIR/pid" 2>/dev/null || {
             rmdir "$LOCK_DIR" 2>/dev/null
             return 1
         }
         return 0
     fi
-    owner=$(cat "$LOCK_DIR/pid" 2>/dev/null | tr -d ' \\r\\n')
+    owner=$(cat "$LOCK_DIR/pid" 2>/dev/null | tr -d ' \r\n')
     # 锁初始化窗口或损坏锁一律保守拒绝，不冒险启动第二个调度器。
     case "$owner" in ''|*[!0-9]*) return 1 ;; esac
     if pid_is_daemon "$owner"; then return 1; fi
@@ -115,7 +115,7 @@ acquire_daemon_lock() {
         rm -f "$stale_dir/pid" 2>/dev/null
         rmdir "$stale_dir" 2>/dev/null
         if mkdir "$LOCK_DIR" 2>/dev/null; then
-            printf '%s\\n' "$" > "$LOCK_DIR/pid" 2>/dev/null || {
+            printf '%s\n' "$" > "$LOCK_DIR/pid" 2>/dev/null || {
                 rmdir "$LOCK_DIR" 2>/dev/null
                 return 1
             }
@@ -127,7 +127,7 @@ acquire_daemon_lock() {
 
 release_daemon_lock() {
     local owner current
-    owner=$(cat "$LOCK_DIR/pid" 2>/dev/null | tr -d ' \\r\\n')
+    owner=$(cat "$LOCK_DIR/pid" 2>/dev/null | tr -d ' \r\n')
     [ "$owner" = "$" ] || return 0
     rm -f "$LOCK_DIR/pid" 2>/dev/null
     rmdir "$LOCK_DIR" 2>/dev/null
