@@ -123,6 +123,32 @@ task_owner_alive() {
     case "$cmd" in *"$SCRIPT_PATH"*"$marker"*) return 0 ;; *) return 1 ;; esac
 }
 
+reclaim_stale_task_lock() {
+    # $1=锁目录 $2=进程命令行标记；用独立恢复锁串行化陈旧锁回收。
+    local lock="$1" marker="$2" recovery="${1}.recover" owner current stale_dir
+    mkdir "$recovery" 2>/dev/null || return 1
+    owner=$(cat "$lock/pid" 2>/dev/null | tr -d ' \r\n')
+    case "$owner" in ''|*[!0-9]*) rmdir "$recovery" 2>/dev/null; return 1 ;; esac
+    if task_owner_alive "$owner" "$marker"; then
+        rmdir "$recovery" 2>/dev/null
+        return 1
+    fi
+    current=$(cat "$lock/pid" 2>/dev/null | tr -d ' \r\n')
+    if [ "$current" != "$owner" ]; then
+        rmdir "$recovery" 2>/dev/null
+        return 1
+    fi
+    stale_dir="$lock.stale.$"
+    if [ -e "$stale_dir" ] || ! mv "$lock" "$stale_dir" 2>/dev/null; then
+        rmdir "$recovery" 2>/dev/null
+        return 1
+    fi
+    rm -f "$stale_dir/pid" 2>/dev/null
+    rmdir "$stale_dir" 2>/dev/null
+    rmdir "$recovery" 2>/dev/null
+    return 0
+}
+
 rotate_log_file() {
     # $1=日志路径 $2=最大字节数；仅保留一个轮转副本，限制长期增长。
     local file="$1" limit="$2" size
@@ -484,23 +510,15 @@ acquire_clean_lock() {
     fi
 
     owner=$(cat "$CLEAN_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
-    # 空锁目录可能正处于“mkdir 成功、写入 PID”窗口；不自动回收，
-    # 避免两个清理进程同时获得锁。此类异常残留需人工检查后处理。
+    # 空锁目录可能正处于初始化窗口；必须保守拒绝回收。
     case "$owner" in ''|*[!0-9]*) return 1 ;; esac
-    if ! clean_lock_owner_alive "$owner"; then
-        # 同文件系统 rename 争抢陈旧锁所有权；仅一个竞争者能成功。
-        stale_dir="$CLEAN_LOCK.stale.$$"
-        [ ! -e "$stale_dir" ] || return 1
-        if mv "$CLEAN_LOCK" "$stale_dir" 2>/dev/null; then
-            rm -f "$stale_dir/pid" 2>/dev/null
-            rmdir "$stale_dir" 2>/dev/null
-            if mkdir "$CLEAN_LOCK" 2>/dev/null; then
-                printf '%s\n' "$$" > "$CLEAN_LOCK/pid" 2>/dev/null || {
-                    rmdir "$CLEAN_LOCK" 2>/dev/null
-                    return 1
-                }
-                return 0
-            fi
+    if reclaim_stale_task_lock "$CLEAN_LOCK" "clean"; then
+        if mkdir "$CLEAN_LOCK" 2>/dev/null; then
+            printf '%s\n' "$" > "$CLEAN_LOCK/pid" 2>/dev/null || {
+                rmdir "$CLEAN_LOCK" 2>/dev/null
+                return 1
+            }
+            return 0
         fi
     fi
     return 1
@@ -998,18 +1016,10 @@ start_cleanup() {
     if ! mkdir "$CLEAN_TASK_LOCK" 2>/dev/null; then
         owner=$(cat "$CLEAN_TASK_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
         case "$owner" in ''|*[!0-9]*) echo '{"status":"already_running"}'; return 0 ;; esac
-        if task_owner_alive "$owner" "__cleanup_worker"; then
+        if ! reclaim_stale_task_lock "$CLEAN_TASK_LOCK" "__cleanup_worker"; then
             echo '{"status":"already_running"}'
             return 0
         fi
-        stale_dir="$CLEAN_TASK_LOCK.stale.$$"
-        [ ! -e "$stale_dir" ] || { echo '{"status":"already_running"}'; return 0; }
-        if ! mv "$CLEAN_TASK_LOCK" "$stale_dir" 2>/dev/null; then
-            echo '{"status":"already_running"}'
-            return 0
-        fi
-        rm -f "$stale_dir/pid" 2>/dev/null
-        rmdir "$stale_dir" 2>/dev/null
         mkdir "$CLEAN_TASK_LOCK" 2>/dev/null || { echo '{"status":"already_running"}'; return 0; }
     fi
 
@@ -1076,7 +1086,6 @@ cleanup_status() {
 }
 
 # ---------------------------------------------------------------- 文件任务入口
-# ---------------------------------------------------------------- 文件任务入口
 
 start_file_task() {
     local task="${2:-scan}" owner stale_dir pid
@@ -1085,18 +1094,10 @@ start_file_task() {
     if ! mkdir "$FILE_TASK_LOCK" 2>/dev/null; then
         owner=$(cat "$FILE_TASK_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
         case "$owner" in ''|*[!0-9]*) echo '{"status":"already_running"}'; return 0 ;; esac
-        if task_owner_alive "$owner" "__file_worker"; then
+        if ! reclaim_stale_task_lock "$FILE_TASK_LOCK" "__file_worker"; then
             echo '{"status":"already_running"}'
             return 0
         fi
-        stale_dir="$FILE_TASK_LOCK.stale.$$"
-        [ ! -e "$stale_dir" ] || { echo '{"status":"already_running"}'; return 0; }
-        if ! mv "$FILE_TASK_LOCK" "$stale_dir" 2>/dev/null; then
-            echo '{"status":"already_running"}'
-            return 0
-        fi
-        rm -f "$stale_dir/pid" 2>/dev/null
-        rmdir "$stale_dir" 2>/dev/null
         mkdir "$FILE_TASK_LOCK" 2>/dev/null || { echo '{"status":"already_running"}'; return 0; }
     fi
 
