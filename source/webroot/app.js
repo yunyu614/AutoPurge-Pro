@@ -812,6 +812,40 @@ async function resetStats() {
   refreshDashboard();
 }
 
+async function previewCleanup() {
+  if (!isKsuEnv()) {
+    showToast("清理预览需要在已授权的 Root WebUI 中执行");
+    return;
+  }
+  const btn = document.getElementById("btnPreviewCleanup");
+  if (btn) { btn.disabled = true; btn.textContent = "正在扫描…"; }
+  try {
+    const res = await execRootCmd(`${SHELL} "${CTL_SCRIPT}" preview_cleanup`, 30000);
+    if (res.errno !== 0) throw new Error(res.stderr || "预览扫描失败");
+    const data = parseJsonLoose(res.stdout);
+    if (!data || data.status !== "ok") throw new Error(data?.message || "预览结果无效");
+    const details = (data.items || []).map((item) => {
+      const type = item.type === "apk" ? "APK" : "本模块备份";
+      return `[${type}] ${item.path}（${(Number(item.size || 0) / 1024).toFixed(1)} KB）`;
+    });
+    const summary = [
+      `预览文件：${data.count || 0} 个`,
+      `逻辑大小：${(Number(data.bytes || 0) / 1024).toFixed(1)} KB`,
+      data.truncated ? "明细仅显示前 100 项。" : "",
+      "",
+      ...details,
+      "",
+      "注意：此预览只覆盖 Shell 管理的 APK 和本模块备份文件，不包含 TimingClear / MTClear 等闭源程序的清理目标。",
+      "预览不会删除任何文件。"
+    ].filter(Boolean).join("\n");
+    window.alert(summary);
+  } catch (e) {
+    showToast(`清理预览失败：${String(e.message || e).slice(0, 90)}`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "预览清理范围"; }
+  }
+}
+
 async function triggerCleanup(mode, btnId) {
   const btn = document.getElementById(btnId || (mode === "mt" ? "btnCleanMT" : "btnCleanAll"));
   if (btn && btn.disabled) return;
