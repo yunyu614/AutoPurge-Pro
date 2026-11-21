@@ -361,11 +361,11 @@ organize_source_dirs() {
     [ -d "$root" ] || root="/sdcard"
     if is_protected_system_path "$root"; then root="/storage/emulated/0"; fi
     local p
-    p=$(get_path_val download "$root/Download"); path_is_child_of "$p" "$root" || p="$root/Download"; printf '%s\\n' "$p"
-    p=$(get_path_val qq "$root/QQfile_recv"); path_is_child_of "$p" "$root" || p="$root/QQfile_recv"; printf '%s\\n' "$p"
-    p=$(get_path_val wechat "$root/WeChat"); path_is_child_of "$p" "$root" || p="$root/WeChat"; printf '%s\\n' "$p"
-    p=$(get_path_val telegram "$root/Telegram"); path_is_child_of "$p" "$root" || p="$root/Telegram"; printf '%s\\n' "$p"
-    p=$(get_path_val bluetooth "$root/Bluetooth"); path_is_child_of "$p" "$root" || p="$root/Bluetooth"; printf '%s\\n' "$p"
+    p=$(get_path_val download "$root/Download"); path_is_child_of "$p" "$root" || p="$root/Download"; printf '%s\n' "$p"
+    p=$(get_path_val qq "$root/QQfile_recv"); path_is_child_of "$p" "$root" || p="$root/QQfile_recv"; printf '%s\n' "$p"
+    p=$(get_path_val wechat "$root/WeChat"); path_is_child_of "$p" "$root" || p="$root/WeChat"; printf '%s\n' "$p"
+    p=$(get_path_val telegram "$root/Telegram"); path_is_child_of "$p" "$root" || p="$root/Telegram"; printf '%s\n' "$p"
+    p=$(get_path_val bluetooth "$root/Bluetooth"); path_is_child_of "$p" "$root" || p="$root/Bluetooth"; printf '%s\n' "$p"
     printf '%s\n' \
         "$root/Tencent/QQfile_recv" \
         "$root/Android/data/com.tencent.mobileqq/Tencent/QQfile_recv" \
@@ -379,7 +379,7 @@ organize_source_dirs() {
 # ---------------------------------------------------------------- 清理子任务
 
 clean_apk_packages() {
-    local sw now_str p download_path
+    local sw now_str p download_path storage_root
     sw=$(get_conf_val "apk_cleaning" "$MAIN_CONF" "false")
     [ "$sw" = "true" ] || return 0
 
@@ -993,6 +993,9 @@ preview_cleanup() {
     if [ "$apk_sw" = "true" ]; then
         storage_root=$(get_path_val storage_root "/storage/emulated/0")
         [ -d "$storage_root" ] || storage_root="/sdcard"
+        if is_protected_system_path "$storage_root"; then
+            storage_root="/storage/emulated/0"
+        fi
         download_path=$(get_path_val download "$storage_root/Download")
         if path_is_child_of "$download_path" "$storage_root" && [ -d "$download_path" ] && [ ! -L "$download_path" ]; then
             find "$download_path" -maxdepth 2 -type f -name "*.apk" -print 2>/dev/null >> "$list_tmp"
