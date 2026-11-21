@@ -62,22 +62,3 @@ jobs:
 
       - name: Check WebUI JavaScript syntax
         run: node --check source/webroot/app.js
- "$tmp/config/配置.conf"
-          AUTOPURGE_MODDIR="$tmp/module" AUTOPURGE_CONFIG_DIR="$tmp/config" \
-            sh source/bin/autopurge_ctl.sh preview_cleanup > "$tmp/preview.json"
-          python3 - "$tmp/preview.json" "$tmp/storage/Download/demo.apk" "$tmp/module/sample.bak" <<'PY'
-          import json, os, sys
-          with open(sys.argv[1], encoding="utf-8") as f:
-              result = json.load(f)
-          assert result["status"] == "ok", result
-          assert result["scope"] == "shell_managed_only", result
-          assert result["count"] == 2, result
-          assert len(result["items"]) == 2, result
-          assert {item["type"] for item in result["items"]} == {"apk", "module_backup"}, result
-          assert os.path.exists(sys.argv[2]), "preview deleted APK candidate"
-          assert os.path.exists(sys.argv[3]), "preview deleted module backup"
-          print("preview smoke test passed")
-          PY
-
-      - name: Check WebUI JavaScript syntax
-        run: node --check source/webroot/app.js
