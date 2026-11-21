@@ -1284,7 +1284,7 @@ const UI_EN = {
   "黑名单规则": "Blacklist rules", "白名单保护": "Whitelist", "MT清理规则": "MT rules",
   "存储空间": "Storage",
   "清理功能": "Cleanup", "黑名单清理": "Blacklist cleanup", "MT 残留清理": "MT residue cleanup",
-  "日志自动维护": "Log maintenance", "模块残留清理": "Module residue", "APK 自动清理": "APK cleanup", "定时清理": "Scheduled cleanup",
+  "日志自动维护": "Log maintenance", "达到阈值后轮转备份，保留最近一份日志": "Rotate logs at the threshold and keep the latest backup", "仅处理存储根目录内配置的下载目录，不扫描其他应用私有数据": "Only process the configured download folder under shared storage; never scan other apps’ private data", "仅移动归档，不删除原文件；路径可在规则中心自定义": "Move files into archive folders without deleting originals; customize paths in Rules", "模块残留清理": "Module residue", "APK 自动清理": "APK cleanup", "定时清理": "Scheduled cleanup",
   "文件整理": "File organizing", "扫描文件": "Scan files", "开始归档": "Organize", "修改路径": "Edit paths",
   "待整理": "Pending", "图片": "Images", "视频": "Videos", "音频": "Audio", "安装包": "APKs", "压缩包": "Archives",
   "规则与路径": "Rules & Paths", "黑名单": "Blacklist", "白名单": "Whitelist", "MT 名单": "MT list",
