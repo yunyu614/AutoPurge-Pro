@@ -99,7 +99,7 @@ read_pid() {
 acquire_daemon_lock() {
     local owner stale_dir
     if mkdir "$LOCK_DIR" 2>/dev/null; then
-        printf '%s\n' "$" > "$LOCK_DIR/pid" 2>/dev/null || {
+        printf '%s\n' "$$" > "$LOCK_DIR/pid" 2>/dev/null || {
             rmdir "$LOCK_DIR" 2>/dev/null
             return 1
         }
@@ -109,7 +109,7 @@ acquire_daemon_lock() {
     # 锁初始化窗口或损坏锁一律保守拒绝，不冒险启动第二个调度器。
     case "$owner" in ''|*[!0-9]*) return 1 ;; esac
     if pid_is_daemon "$owner"; then return 1; fi
-    stale_dir="$LOCK_DIR.stale.$"
+    stale_dir="$LOCK_DIR.stale.$$"
     [ ! -e "$stale_dir" ] || return 1
     if mv "$LOCK_DIR" "$stale_dir" 2>/dev/null; then
         rm -f "$stale_dir/pid" 2>/dev/null
