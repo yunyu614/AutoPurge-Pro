@@ -27,7 +27,7 @@ jobs:
           while IFS= read -r -d '' file; do
             echo "Checking $file"
             sh -n "$file"
-          done < <(find source -type f \\( -name '*.sh' -o -name 'Main.sh' -o -name 'service.sh' -o -name 'action.sh' -o -path 'source/Service_Config/Service_*' -o -path 'source/Configuration_File/自定义定时设置/Timing_Settings' \\) -print0)
+          done < <(find source -type f \( -name '*.sh' -o -name 'Main.sh' -o -name 'service.sh' -o -name 'action.sh' -o -path 'source/Service_Config/Service_*' -o -path 'source/Configuration_File/自定义定时设置/Timing_Settings' \) -print0)
 
       - name: Check WebUI JavaScript syntax
         run: node --check source/webroot/app.js
