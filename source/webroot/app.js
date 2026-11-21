@@ -648,7 +648,7 @@ async function refreshDashboard() {
       },
       schedule: { mode: "daily", interval: 6, interval_unit: "hour", next_run_epoch: 0, scheduler_running: true, t1: "0", m1: "00", w1: "*", t2: "12", m2: "00", w2: "*" },
       stats: {
-        total_files: 1842, total_dirs: 316, total_runs: 28, total_freed_kb: 1482940,
+        total_files: 1842, total_dirs: 316, total_runs: 28, total_freed_kb: 1482940, observed_space_increase_kb: 1482940,
         last_run_files: 64, last_run_dirs: 12, last_clean_time: "2026-11-06 11:30:00",
         bl_count: 492, wl_count: 18, mt_count: 31, log_size_bytes: 18432
       },
@@ -697,7 +697,7 @@ function renderDashboardData(data) {
   setText("statTotalDirs", Number(st.total_dirs || 0).toLocaleString());
   setText("statLastFiles", `上次清理: +${st.last_run_files || 0} 个文件`);
   setText("statLastDirs", `上次清理: +${st.last_run_dirs || 0} 个目录`);
-  setText("statTotalFreed", formatSizeFromKB(st.total_freed_kb || 0));
+  setText("statTotalFreed", formatSizeFromKB(st.observed_space_increase_kb || 0));
   setText("statTotalRuns", `累计执行: ${st.total_runs || 0} 次`);
   setText("statLastTime", st.last_clean_time || "尚未执行");
   const schedText = sc.mode === "interval"
@@ -743,10 +743,8 @@ async function onCleanupMasterToggle(checked) {
   const ids = ["swBlacklistClean", "swMt", "swLog", "swModResidue", "swApkClean", "swTimed"];
   ids.forEach((id) => setSwitch(id, checked));
   if (!isKsuEnv()) { showToast(`清理功能总开关已${checked ? "开启" : "关闭"}（预览模式）`); return; }
-  const assignments = keys.map((key) =>
-    `if grep -qE "^[[:space:]]*${key}[[:space:]]*=" "${FILE_PATHS.main_conf}"; then sed -i "s|^[[:space:]]*${key}[[:space:]]*=.*|${key}=${checked}|g" "${FILE_PATHS.main_conf}"; else echo "${key}=${checked}" >> "${FILE_PATHS.main_conf}"; fi`
-  ).join("; ");
-  const result = await execRootCmd(`${assignments}; ${SHELL} "${CTL_SCRIPT}" apply`);
+  const assignments = keys.map((key) => `${key} ${checked ? "true" : "false"}`).join(" ");
+  const result = await execRootCmd(`${SHELL} "${CTL_SCRIPT}" set_config ${assignments} && ${SHELL} "${CTL_SCRIPT}" apply`);
   if (result.errno !== 0) { showToast("清理总开关保存失败，请检查 Root 权限"); refreshDashboard(); return; }
   showToast(`清理功能及定时任务已${checked ? "全部启用" : "全部停用"}`);
   refreshDashboard();
@@ -756,14 +754,7 @@ async function onToggleSwitch(key, checked) {
   const val = checked ? "true" : "false";
   const label = SWITCH_LABELS[key] || key;
   if (isKsuEnv()) {
-    const cmd = `
-      if grep -qE "^[[:space:]]*${key}[[:space:]]*=" "${FILE_PATHS.main_conf}"; then
-        sed -i "s|^[[:space:]]*${key}[[:space:]]*=.*|${key}=${val}|g" "${FILE_PATHS.main_conf}"
-      else
-        echo "${key}=${val}" >> "${FILE_PATHS.main_conf}"
-      fi
-      ${SHELL} "${CTL_SCRIPT}" apply
-    `;
+    const cmd = `${SHELL} "${CTL_SCRIPT}" set_config ${key} ${val} && ${SHELL} "${CTL_SCRIPT}" apply`;
     const result = await execRootCmd(cmd);
     if (result.errno !== 0) {
       showToast(`${label}保存失败，请检查 Root 权限`);
@@ -783,15 +774,7 @@ async function onChangeLogSize(val) {
     return;
   }
   if (isKsuEnv()) {
-    const cmd = `
-      if grep -qE "^[[:space:]]*log_purge_size[[:space:]]*=" "${FILE_PATHS.main_conf}"; then
-        sed -i "s|^[[:space:]]*log_purge_size[[:space:]]*=.*|log_purge_size=${val}|g" "${FILE_PATHS.main_conf}"
-      else
-        echo "log_purge_size=${val}" >> "${FILE_PATHS.main_conf}"
-      fi
-      pkill -f "${MODDIR}/bin/LogClear" 2>/dev/null
-      ${SHELL} "${CTL_SCRIPT}" apply
-    `;
+    const cmd = `${SHELL} "${CTL_SCRIPT}" set_config log_purge_size ${val} && (pkill -f "${MODDIR}/bin/LogClear" 2>/dev/null || true) && ${SHELL} "${CTL_SCRIPT}" apply`;
     const result = await execRootCmd(cmd);
     if (result.errno !== 0) {
       showToast("日志阈值保存失败，请检查 Root 权限");
@@ -810,6 +793,40 @@ async function resetStats() {
   if (res.errno !== 0) { showToast("重置失败，请检查 Root 权限"); return; }
   showToast("累计统计已重置");
   refreshDashboard();
+}
+
+async function previewCleanup() {
+  if (!isKsuEnv()) {
+    showToast("清理预览需要在已授权的 Root WebUI 中执行");
+    return;
+  }
+  const btn = document.getElementById("btnPreviewCleanup");
+  if (btn) { btn.disabled = true; btn.textContent = "正在扫描…"; }
+  try {
+    const res = await execRootCmd(`${SHELL} "${CTL_SCRIPT}" preview_cleanup`, 30000);
+    if (res.errno !== 0) throw new Error(res.stderr || "预览扫描失败");
+    const data = parseJsonLoose(res.stdout);
+    if (!data || data.status !== "ok") throw new Error(data?.message || "预览结果无效");
+    const details = (data.items || []).map((item) => {
+      const type = item.type === "apk" ? "APK" : "本模块备份";
+      return `[${type}] ${item.path}（${(Number(item.size || 0) / 1024).toFixed(1)} KB）`;
+    });
+    const summary = [
+      `预览文件：${data.count || 0} 个`,
+      `逻辑大小：${(Number(data.bytes || 0) / 1024).toFixed(1)} KB`,
+      data.truncated ? "明细仅显示前 100 项。" : "",
+      "",
+      ...details,
+      "",
+      "注意：此预览只覆盖 Shell 管理的 APK 和本模块备份文件，不包含 TimingClear / MTClear 等闭源程序的清理目标。",
+      "预览不会删除任何文件。"
+    ].filter(Boolean).join("\n");
+    window.alert(summary);
+  } catch (e) {
+    showToast(`清理预览失败：${String(e.message || e).slice(0, 90)}`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "预览清理范围"; }
+  }
 }
 
 async function triggerCleanup(mode, btnId) {
@@ -1184,7 +1201,14 @@ async function organizeUserFiles() {
   if (btn) { btn.disabled = true; btn.textContent = "归档中…"; }
   try {
     const state = await runFileTask("organize");
-    if (state) showToast("文件归档已完成");
+    if (state) {
+      const result = state.result || {};
+      if (result.status === "error" || Number(result.failed || 0) > 0) {
+        showToast(`归档结束：成功移动 ${Number(result.moved || 0)} 个，失败 ${Number(result.failed || 0)} 个`);
+      } else {
+        showToast(`归档完成：成功移动 ${Number(result.moved || 0)} 个文件`);
+      }
+    }
   } catch (e) {
     showToast(`归档失败：${String(e.message || e).slice(0, 70)}`);
   } finally {
@@ -1256,11 +1280,11 @@ const UI_EN = {
   "主控守护": "MainControl", "定时器": "Scheduler", "MT 监测": "MT Monitor", "日志守护": "Log Monitor",
   "🟢 模块运行中": "🟢 Module Running", "⏸️ 模块已暂停": "⏸️ Module Paused",
   "守护服务状态与运行概况": "Daemons & run overview", "自动服务运行正常": "Automatic services are running", "后台自动任务已暂停": "Automatic tasks are paused",
-  "累计清理文件": "Files cleaned", "累计清理目录": "Dirs cleaned", "累计释放空间": "Space freed", "最近清理时间": "Last cleanup",
+  "累计清理文件": "Files cleaned", "累计清理目录": "Dirs cleaned", "累计可用空间增加": "Observed space increase", "最近清理时间": "Last cleanup",
   "黑名单规则": "Blacklist rules", "白名单保护": "Whitelist", "MT清理规则": "MT rules",
   "存储空间": "Storage",
   "清理功能": "Cleanup", "黑名单清理": "Blacklist cleanup", "MT 残留清理": "MT residue cleanup",
-  "日志自动维护": "Log maintenance", "模块残留清理": "Module residue", "APK 自动清理": "APK cleanup", "定时清理": "Scheduled cleanup",
+  "日志自动维护": "Log maintenance", "达到阈值后轮转备份，保留最近一份日志": "Rotate logs at the threshold and keep the latest backup", "仅处理存储根目录内配置的下载目录，不扫描其他应用私有数据": "Only process the configured download folder under shared storage; never scan other apps’ private data", "仅移动归档，不删除原文件；路径可在规则中心自定义": "Move files into archive folders without deleting originals; customize paths in Rules", "模块残留清理": "Module residue", "APK 自动清理": "APK cleanup", "定时清理": "Scheduled cleanup",
   "文件整理": "File organizing", "扫描文件": "Scan files", "开始归档": "Organize", "修改路径": "Edit paths",
   "待整理": "Pending", "图片": "Images", "视频": "Videos", "音频": "Audio", "安装包": "APKs", "压缩包": "Archives",
   "规则与路径": "Rules & Paths", "黑名单": "Blacklist", "白名单": "Whitelist", "MT 名单": "MT list",

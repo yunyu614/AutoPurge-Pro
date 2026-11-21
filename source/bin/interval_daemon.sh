@@ -23,12 +23,13 @@ MAIN_CONF="$CONFIG_DIR/配置.conf"
 STATE_FILE="$TIMING_DIR/interval.state"
 SCHED_VERSION=2
 PID_FILE="$MODDIR/interval.pid"
+LOCK_DIR="$MODDIR/.interval_daemon.lock"
 LOG_FILE="$MODDIR/interval.log"
 SCRIPT_PATH="$SCRIPT_DIR/interval_daemon.sh"
 
 getv() {
-    # $1=键 $2=文件；只取第一次出现的值
-    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$2" 2>/dev/null | head -n1 | tr -d ' \r\t'
+    # $1=键 $2=文件；与控制脚本统一取最后一次定义，兼容旧配置重复键。
+    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$2" 2>/dev/null | tail -n1 | tr -d ' \r\t'
 }
 
 state_get() {
@@ -83,7 +84,7 @@ pid_is_daemon() {
     [ -r "/proc/$pid/cmdline" ] || return 1
     cmd="$(tr '\000' ' ' < "/proc/$pid/cmdline" 2>/dev/null)"
     case "$cmd" in
-        *interval_daemon.sh*) ;;
+        *"$SCRIPT_PATH"*) ;;
         *) return 1 ;;
     esac
     [ "$pid" != "$$" ] || return 1
@@ -93,6 +94,54 @@ pid_is_daemon() {
 read_pid() {
     [ -f "$PID_FILE" ] || return 1
     cat "$PID_FILE" 2>/dev/null | tr -d ' \r\n'
+}
+
+acquire_daemon_lock() {
+    local owner current stale_dir recovery="$LOCK_DIR.recover"
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+        printf '%s\n' "$$" > "$LOCK_DIR/pid" 2>/dev/null || {
+            rmdir "$LOCK_DIR" 2>/dev/null
+            return 1
+        }
+        return 0
+    fi
+    owner=$(cat "$LOCK_DIR/pid" 2>/dev/null | tr -d ' \r\n')
+    case "$owner" in ''|*[!0-9]*) return 1 ;; esac
+
+    # 单独的恢复锁串行化陈旧实例回收，避免两个启动者互相搬走新锁。
+    mkdir "$recovery" 2>/dev/null || return 1
+    current=$(cat "$LOCK_DIR/pid" 2>/dev/null | tr -d ' \r\n')
+    if [ "$current" != "$owner" ] || pid_is_daemon "$owner"; then
+        rmdir "$recovery" 2>/dev/null
+        return 1
+    fi
+    stale_dir="$LOCK_DIR.stale.$$"
+    if [ -e "$stale_dir" ] || ! mv "$LOCK_DIR" "$stale_dir" 2>/dev/null; then
+        rmdir "$recovery" 2>/dev/null
+        return 1
+    fi
+    rm -f "$stale_dir/pid" 2>/dev/null
+    rmdir "$stale_dir" 2>/dev/null
+    rmdir "$recovery" 2>/dev/null
+
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+        printf '%s\n' "$$" > "$LOCK_DIR/pid" 2>/dev/null || {
+            rmdir "$LOCK_DIR" 2>/dev/null
+            return 1
+        }
+        return 0
+    fi
+    return 1
+}
+
+release_daemon_lock() {
+    local owner current
+    owner=$(cat "$LOCK_DIR/pid" 2>/dev/null | tr -d ' \r\n')
+    [ "$owner" = "$$" ] || return 0
+    rm -f "$LOCK_DIR/pid" 2>/dev/null
+    rmdir "$LOCK_DIR" 2>/dev/null
+    current=$(read_pid)
+    [ "$current" = "$$" ] && rm -f "$PID_FILE"
 }
 
 stop_daemon() {
@@ -115,7 +164,8 @@ stop_daemon() {
         done
         kill -9 "$pid" 2>/dev/null
     fi
-    rm -f "$PID_FILE"
+    # 仅清理仍指向本次停止目标的 PID 文件，避免覆盖并发启动的新实例。
+    [ "$(read_pid)" = "$pid" ] && rm -f "$PID_FILE"
 }
 
 write_pid() {
@@ -126,14 +176,13 @@ write_pid() {
 
 log_line() {
     [ -f "$LOG_FILE" ] || : > "$LOG_FILE" 2>/dev/null
-    printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$LOG_FILE" 2>/dev/null
-    # 日志超过约 64KB 时只保留最后 200 行
     local size
     size=$(wc -c < "$LOG_FILE" 2>/dev/null | tr -d ' ')
-    case "$size" in ''|*[!0-9]*) return 0 ;; esac
-    if [ "$size" -gt 65536 ]; then
-        tail -n 200 "$LOG_FILE" > "$LOG_FILE.tmp" 2>/dev/null && mv -f "$LOG_FILE.tmp" "$LOG_FILE" 2>/dev/null
+    case "$size" in ''|*[!0-9]*) size=0 ;; esac
+    if [ "$size" -gt 1048576 ]; then
+        mv -f "$LOG_FILE" "$LOG_FILE.1" 2>/dev/null && : > "$LOG_FILE"
     fi
+    printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$LOG_FILE" 2>/dev/null
 }
 
 enabled_now() {
@@ -151,12 +200,15 @@ run_loop() {
         log_line "定时配置文件不存在，守护进程退出"
         return 1
     fi
-    old_daemon="$(read_pid)"
-    if pid_is_daemon "$old_daemon"; then
-        log_line "已有间隔守护在运行（PID $old_daemon），本次启动忽略"
+    if ! acquire_daemon_lock; then
+        log_line "已有间隔守护或锁状态异常，本次启动忽略"
         return 0
     fi
-    write_pid || { log_line "无法写入 PID 文件"; return 1; }
+    write_pid || {
+        release_daemon_lock
+        log_line "无法写入 PID 文件"
+        return 1
+    }
 
     # 信号只置标志位，等待中的 sleep 子进程会被 stop_daemon 结束
     RUNNING=1
@@ -241,7 +293,7 @@ run_loop() {
         next="$next_after"
     done
 
-    rm -f "$PID_FILE"
+    release_daemon_lock
     log_line "间隔守护已退出"
 }
 

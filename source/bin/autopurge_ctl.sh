@@ -31,6 +31,8 @@ CLEAN_STATE="$CONFIG_DIR/Cleanup.state"
 CLEAN_PID="$CONFIG_DIR/Cleanup.pid"
 CLEAN_WORKER_LOG="$CONFIG_DIR/Cleanup_worker.log"
 CLEAN_LOCK="$CONFIG_DIR/.cleanup.lock"
+CLEAN_TASK_LOCK="$CONFIG_DIR/.cleanup-task.lock"
+FILE_TASK_LOCK="$CONFIG_DIR/.file-task.lock"
 FILE_TASK_STATE="$CONFIG_DIR/FileTask.state"
 FILE_TASK_PID="$CONFIG_DIR/FileTask.pid"
 FILE_TASK_RESULT="$CONFIG_DIR/FileTask.result"
@@ -52,6 +54,41 @@ get_conf_val() {
     printf '%s' "$val"
 }
 
+path_is_child_of() {
+    # $1=候选路径 $2=允许的根目录；不接受根目录本身或根目录之外的路径。
+    case "$1" in "$2"/*) return 0 ;; *) return 1 ;; esac
+}
+
+path_has_symlink_component() {
+    # $1=候选路径 $2=可信根目录；检查根目录以下每一级，防止词法子路径经符号链接逃逸。
+    local candidate="$1" root="$2" relative component current
+    path_is_child_of "$candidate" "$root" || return 1
+    relative=${candidate#"$root"/}
+    current="$root"
+    while [ -n "$relative" ]; do
+        component=${relative%%/*}
+        if [ "$relative" = "$component" ]; then
+            relative=""
+        else
+            relative=${relative#*/}
+        fi
+        [ -n "$component" ] || continue
+        current="$current/$component"
+        [ ! -L "$current" ] || return 0
+    done
+    return 1
+}
+
+is_protected_system_path() {
+    case "$1" in
+        /data/media/0|/data/media/0/*)
+            return 1 ;;
+        /|/data|/data/*|/system|/system/*|/vendor|/vendor/*|/proc|/proc/*|/sys|/sys/*|/dev|/dev/*|/apex|/apex/*|/metadata|/metadata/*)
+            return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 get_path_val() {
     # 读取 FilePaths.conf 中的路径并做安全校验，非法值回退默认。
     local key="$1" default_val="$2" val
@@ -69,12 +106,62 @@ get_path_val() {
 }
 
 set_conf_val() {
-    # $1=key $2=val $3=file
-    if grep -qE "^[[:space:]]*$1[[:space:]]*=" "$3" 2>/dev/null; then
-        sed -i "s|^[[:space:]]*$1[[:space:]]*=.*|$1=$2|g" "$3"
-    else
-        printf '%s=%s\n' "$1" "$2" >> "$3"
-    fi
+    # $1=key $2=value $3=file；仅允许白名单键和值，临时文件替换避免半写入。
+    local key="$1" value="$2" file="$3" tmp
+    case "$key" in
+        master_switch|timed_cleaning|mt_cleaning|log_cleaning|apk_cleaning|module_residue_cleaning|file_organize|blacklist_cleaning)
+            case "$value" in true|false) ;; *) return 1 ;; esac
+            ;;
+        log_purge_size)
+            case "$value" in 512K|1M|2M|5M|10M) ;; *) return 1 ;; esac
+            ;;
+        *) return 1 ;;
+    esac
+    tmp="$file.tmp.$$"
+    awk -v key="$key" -v value="$value" '
+        BEGIN { updated = 0 }
+        $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+            if (!updated) { print key "=" value; updated = 1 }
+            next
+        }
+        { print }
+        END { if (!updated) print key "=" value }
+    ' "$file" > "$tmp" || { rm -f "$tmp"; return 1; }
+    chmod 644 "$tmp" 2>/dev/null
+    mv -f "$tmp" "$file"
+}
+
+set_config_cmd() {
+    init_env
+    local tmp key value changed=0
+    [ "$#" -ge 3 ] || { echo '{"status":"error","message":"missing key/value"}'; return 2; }
+    shift
+    tmp="$MAIN_CONF.batch.$$"
+    cp "$MAIN_CONF" "$tmp" 2>/dev/null || { echo '{"status":"error","message":"cannot stage config"}'; return 1; }
+    while [ "$#" -ge 2 ]; do
+        key="$1"
+        value="$2"
+        shift 2
+        set_conf_val "$key" "$value" "$tmp" || {
+            rm -f "$tmp"
+            echo '{"status":"error","message":"invalid config key/value"}'
+            return 2
+        }
+        changed=1
+    done
+    [ "$#" -eq 0 ] && [ "$changed" -eq 1 ] || {
+        rm -f "$tmp"
+        echo '{"status":"error","message":"invalid config arguments"}'
+        return 2
+    }
+    chmod 644 "$tmp" 2>/dev/null
+    mv -f "$tmp" "$MAIN_CONF" || {
+        rm -f "$tmp"
+        echo '{"status":"error","message":"config replace failed"}'
+        return 1
+    }
+    sync_module_prop
+    echo '{"status":"ok"}'
 }
 
 counter_get() {
@@ -86,7 +173,10 @@ counter_get() {
 }
 
 counter_set() {
-    printf '目录=%d\n文件=%d\n' "$1" "$2" > "$COUNTER_FILE"
+    local tmp="$COUNTER_FILE.tmp.$$"
+    printf '目录=%d\n文件=%d\n' "$1" "$2" > "$tmp" || { rm -f "$tmp"; return 1; }
+    chmod 644 "$tmp" 2>/dev/null
+    mv -f "$tmp" "$COUNTER_FILE"
 }
 
 stats_field() {
@@ -108,6 +198,54 @@ log_event() {
     # $1=日志文件 $2=行内容
     printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$2" >> "$1"
 }
+
+task_owner_alive() {
+    local pid="$1" marker="$2" cmd=""
+    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+    kill -0 "$pid" 2>/dev/null || return 1
+    [ -r "/proc/$pid/cmdline" ] || return 0
+    cmd=$(tr '\000' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+    case "$cmd" in *"$SCRIPT_PATH"*"$marker"*) return 0 ;; *) return 1 ;; esac
+}
+
+reclaim_stale_task_lock() {
+    # $1=锁目录 $2=进程命令行标记；用独立恢复锁串行化陈旧锁回收。
+    local lock="$1" marker="$2" recovery="${1}.recover" owner current stale_dir
+    mkdir "$recovery" 2>/dev/null || return 1
+    owner=$(cat "$lock/pid" 2>/dev/null | tr -d ' \r\n')
+    case "$owner" in ''|*[!0-9]*) rmdir "$recovery" 2>/dev/null; return 1 ;; esac
+    if task_owner_alive "$owner" "$marker"; then
+        rmdir "$recovery" 2>/dev/null
+        return 1
+    fi
+    current=$(cat "$lock/pid" 2>/dev/null | tr -d ' \r\n')
+    if [ "$current" != "$owner" ]; then
+        rmdir "$recovery" 2>/dev/null
+        return 1
+    fi
+    stale_dir="$lock.stale.$$"
+    if [ -e "$stale_dir" ] || ! mv "$lock" "$stale_dir" 2>/dev/null; then
+        rmdir "$recovery" 2>/dev/null
+        return 1
+    fi
+    rm -f "$stale_dir/pid" 2>/dev/null
+    rmdir "$stale_dir" 2>/dev/null
+    rmdir "$recovery" 2>/dev/null
+    return 0
+}
+
+rotate_log_file() {
+    # $1=日志路径 $2=最大字节数；仅保留一个轮转副本，限制长期增长。
+    local file="$1" limit="$2" size
+    [ -f "$file" ] || return 0
+    size=$(wc -c < "$file" 2>/dev/null | tr -d ' ')
+    case "$size" in ''|*[!0-9]*) return 0 ;; esac
+    [ "$size" -gt "$limit" ] || return 0
+    mv -f "$file" "$file.1" 2>/dev/null || return 1
+    : > "$file"
+    chmod 644 "$file" 2>/dev/null
+}
+
 
 # ---------------------------------------------------------------- 环境初始化
 
@@ -150,11 +288,13 @@ EOF_TIMING
 }
 
 init_env() {
+    local init_tmp
     mkdir -p "$LIST_DIR" "$TIMING_DIR" "$MODDIR/cron.d"
 
-    # 配置文件缺失时写入默认值，避免所有开关回落到隐式默认。
+    # 缺失配置通过临时文件初始化，避免断电留下半截文件。
     if [ ! -f "$MAIN_CONF" ]; then
-        cat > "$MAIN_CONF" <<'EOF_MAINCONF'
+        init_tmp="$MAIN_CONF.init.$$"
+        cat > "$init_tmp" <<'EOF_MAINCONF'
 // AutoPurge Pro 全局配置文件 (Author: liancan)
 master_switch=true
 timed_cleaning=true
@@ -166,18 +306,23 @@ module_residue_cleaning=false
 file_organize=false
 blacklist_cleaning=true
 EOF_MAINCONF
-        chmod 644 "$MAIN_CONF" 2>/dev/null
+        chmod 644 "$init_tmp" 2>/dev/null
+        mv -f "$init_tmp" "$MAIN_CONF" || rm -f "$init_tmp"
     fi
-    if ! grep -q "^master_switch=" "$MAIN_CONF" 2>/dev/null; then
-        sed -i '1i master_switch=true' "$MAIN_CONF" 2>/dev/null || echo "master_switch=true" >> "$MAIN_CONF"
+    if ! grep -qE "^[[:space:]]*master_switch[[:space:]]*=" "$MAIN_CONF" 2>/dev/null; then
+        set_conf_val master_switch true "$MAIN_CONF" || echo "master_switch=true" >> "$MAIN_CONF"
     fi
 
-    [ -f "$COUNTER_FILE" ] || printf "目录=0\n文件=0\n" > "$COUNTER_FILE"
+    if [ ! -f "$COUNTER_FILE" ]; then
+        init_tmp="$COUNTER_FILE.init.$$"
+        printf "目录=0\n文件=0\n" > "$init_tmp" && mv -f "$init_tmp" "$COUNTER_FILE" || rm -f "$init_tmp"
+    fi
     [ -f "$CLEAR_LOG" ] || : > "$CLEAR_LOG"
     [ -f "$HISTORY_LOG" ] || : > "$HISTORY_LOG"
 
     if [ ! -f "$FILE_PATHS_CONF" ]; then
-        cat > "$FILE_PATHS_CONF" <<'EOF_PATHS'
+        init_tmp="$FILE_PATHS_CONF.init.$$"
+        cat > "$init_tmp" <<'EOF_PATHS'
 storage_root=/storage/emulated/0
 download=/storage/emulated/0/Download
 qq=/storage/emulated/0/QQfile_recv
@@ -190,25 +335,29 @@ audio=/storage/emulated/0/Music/AutoPurge
 apks=/storage/emulated/0/安装包/AutoPurge
 modules=/storage/emulated/0/模块安装包/AutoPurge
 EOF_PATHS
-        chmod 600 "$FILE_PATHS_CONF"
+        chmod 600 "$init_tmp" 2>/dev/null
+        mv -f "$init_tmp" "$FILE_PATHS_CONF" || rm -f "$init_tmp"
     fi
 
     ensure_timing_conf
 
     if [ ! -f "$STATS_JSON" ]; then
-        cat > "$STATS_JSON" <<'EOF_STATS'
+        init_tmp="$STATS_JSON.init.$$"
+        cat > "$init_tmp" <<'EOF_STATS'
 {
   "total_files": 0,
   "total_dirs": 0,
   "total_runs": 0,
   "total_freed_kb": 0,
+  "observed_space_increase_kb": 0,
   "last_run_files": 0,
   "last_run_dirs": 0,
   "last_run_freed_kb": 0,
   "last_clean_time": "尚未执行"
 }
 EOF_STATS
-        chmod 644 "$STATS_JSON" 2>/dev/null
+        chmod 644 "$init_tmp" 2>/dev/null
+        mv -f "$init_tmp" "$STATS_JSON" || rm -f "$init_tmp"
     fi
 }
 
@@ -232,15 +381,20 @@ organize_target_get() {
     # 设置 organize 目标目录到全局变量（供 move/scan 使用）
     ORG_ROOT=$(get_path_val storage_root /storage/emulated/0)
     [ -d "$ORG_ROOT" ] || ORG_ROOT="/sdcard"
+    if is_protected_system_path "$ORG_ROOT"; then ORG_ROOT="/storage/emulated/0"; fi
     ORG_IMG=$(get_path_val images "$ORG_ROOT/Pictures/AutoPurge")
     ORG_VID=$(get_path_val videos "$ORG_ROOT/Movies/AutoPurge")
     ORG_AUD=$(get_path_val audio "$ORG_ROOT/Music/AutoPurge")
     ORG_APK=$(get_path_val apks "$ORG_ROOT/安装包/AutoPurge")
     ORG_MOD=$(get_path_val modules "$ORG_ROOT/模块安装包/AutoPurge")
+    path_is_child_of "$ORG_IMG" "$ORG_ROOT" && ! path_has_symlink_component "$ORG_IMG" "$ORG_ROOT" || ORG_IMG="$ORG_ROOT/Pictures/AutoPurge"
+    path_is_child_of "$ORG_VID" "$ORG_ROOT" && ! path_has_symlink_component "$ORG_VID" "$ORG_ROOT" || ORG_VID="$ORG_ROOT/Movies/AutoPurge"
+    path_is_child_of "$ORG_AUD" "$ORG_ROOT" && ! path_has_symlink_component "$ORG_AUD" "$ORG_ROOT" || ORG_AUD="$ORG_ROOT/Music/AutoPurge"
+    path_is_child_of "$ORG_APK" "$ORG_ROOT" && ! path_has_symlink_component "$ORG_APK" "$ORG_ROOT" || ORG_APK="$ORG_ROOT/安装包/AutoPurge"
+    path_is_child_of "$ORG_MOD" "$ORG_ROOT" && ! path_has_symlink_component "$ORG_MOD" "$ORG_ROOT" || ORG_MOD="$ORG_ROOT/模块安装包/AutoPurge"
 }
 
 move_one_file() {
-    # $1=源文件 $2=目标目录；重名自动追加 (n)
     local f="$1" dest="$2" name base ext n target
     [ -f "$f" ] || return 0
     name="$(basename "$f")"
@@ -254,9 +408,14 @@ move_one_file() {
         target="$dest/${base} (${n})${ext}"
     fi
     if mv "$f" "$target" 2>/dev/null; then
+        ORG_MOVED_COUNT=$((ORG_MOVED_COUNT + 1))
         log_event "$CLEAR_LOG" "[文件归位] $f -> $target"
         log_event "$HISTORY_LOG" "| 文件归位 | $f -> $target"
+        return 0
     fi
+    ORG_FAILED_COUNT=$((ORG_FAILED_COUNT + 1))
+    log_event "$CLEAR_LOG" "[文件归位失败] $f -> $target"
+    return 1
 }
 
 classify_file() {
@@ -277,62 +436,90 @@ classify_file() {
 }
 
 organize_source_dirs() {
-    # 输出全部扫描来源目录（每行一个）
-    local root
+    # 输出全部扫描来源目录（每行一个）；遇到符号链接组件时跳过，防止扫描逃出存储根目录。
+    local root p
     root=$(get_path_val storage_root /storage/emulated/0)
     [ -d "$root" ] || root="/sdcard"
-    get_path_val download "$root/Download"
-    get_path_val qq "$root/QQfile_recv"
-    get_path_val wechat "$root/WeChat"
-    get_path_val telegram "$root/Telegram"
-    get_path_val bluetooth "$root/Bluetooth"
-    printf '%s\n' \
+    if is_protected_system_path "$root"; then root="/storage/emulated/0"; fi
+    p=$(get_path_val download "$root/Download"); path_is_child_of "$p" "$root" && ! path_has_symlink_component "$p" "$root" || p="$root/Download"; path_has_symlink_component "$p" "$root" || printf '%s\n' "$p"
+    p=$(get_path_val qq "$root/QQfile_recv"); path_is_child_of "$p" "$root" && ! path_has_symlink_component "$p" "$root" || p="$root/QQfile_recv"; path_has_symlink_component "$p" "$root" || printf '%s\n' "$p"
+    p=$(get_path_val wechat "$root/WeChat"); path_is_child_of "$p" "$root" && ! path_has_symlink_component "$p" "$root" || p="$root/WeChat"; path_has_symlink_component "$p" "$root" || printf '%s\n' "$p"
+    p=$(get_path_val telegram "$root/Telegram"); path_is_child_of "$p" "$root" && ! path_has_symlink_component "$p" "$root" || p="$root/Telegram"; path_has_symlink_component "$p" "$root" || printf '%s\n' "$p"
+    p=$(get_path_val bluetooth "$root/Bluetooth"); path_is_child_of "$p" "$root" && ! path_has_symlink_component "$p" "$root" || p="$root/Bluetooth"; path_has_symlink_component "$p" "$root" || printf '%s\n' "$p"
+    for p in \
         "$root/Tencent/QQfile_recv" \
         "$root/Android/data/com.tencent.mobileqq/Tencent/QQfile_recv" \
         "$root/Android/data/com.tencent.mm/MicroMsg/Download" \
         "$root/Android/data/org.telegram.messenger/files/Telegram" \
         "$root/Telegram/Telegram Documents" \
         "$root/Telegram/Telegram Images" \
-        "$root/Telegram/Telegram Video"
+        "$root/Telegram/Telegram Video"; do
+        path_has_symlink_component "$p" "$root" || printf '%s\n' "$p"
+    done
 }
 
 # ---------------------------------------------------------------- 清理子任务
 
 clean_apk_packages() {
-    local sw now_str p
+    local sw now_str p download_path storage_root
     sw=$(get_conf_val "apk_cleaning" "$MAIN_CONF" "false")
-    [ "$sw" != "true" ] && return 0
+    [ "$sw" = "true" ] || return 0
+
+    # 仅清理用户明确配置的下载目录；不扫描其他应用私有缓存/数据目录。
+    storage_root=$(get_path_val storage_root "/storage/emulated/0")
+    [ -d "$storage_root" ] || storage_root="/sdcard"
+    if is_protected_system_path "$storage_root"; then
+        log_event "$CLEAR_LOG" "[APK清理] 跳过受保护的存储根目录: $storage_root"
+        return 0
+    fi
+    download_path=$(get_path_val download "$storage_root/Download")
+    if ! path_is_child_of "$download_path" "$storage_root" || path_has_symlink_component "$download_path" "$storage_root"; then
+        log_event "$CLEAR_LOG" "[APK清理] 跳过不在存储根目录内的下载路径: $download_path"
+        return 0
+    fi
+    [ -d "$download_path" ] || return 0
+    [ ! -L "$download_path" ] || {
+        log_event "$CLEAR_LOG" "[APK清理] 跳过符号链接目录: $download_path"
+        return 0
+    }
+
     now_str=$(date '+%Y-%m-%d %H:%M:%S')
-    for p in /sdcard/Download /sdcard/Android/data/*/cache /sdcard/Android/data/*/files/Download; do
-        [ -d "$p" ] || continue
-        find "$p" -maxdepth 2 -type f -name "*.apk" 2>/dev/null | while IFS= read -r apk; do
-            [ -f "$apk" ] || continue
-            if rm -f "$apk" 2>/dev/null; then
-                printf '%s %s\n' "$now_str" "[APK清理] 删除安装包: $apk" >> "$CLEAR_LOG"
-                printf '%s | APK清理 | %s\n' "$now_str" "$apk" >> "$HISTORY_LOG"
-            fi
-        done
+    find "$download_path" -maxdepth 2 -type f -name "*.apk" -print 2>/dev/null |
+    while IFS= read -r apk; do
+        [ -f "$apk" ] && [ ! -L "$apk" ] || continue
+        case "$apk" in "$download_path"/*) ;; *) continue ;; esac
+        path_has_symlink_component "$apk" "$storage_root" && continue
+        if rm -f "$apk" 2>/dev/null; then
+            printf '%s %s\n' "$now_str" "[APK清理] 删除安装包: $apk" >> "$CLEAR_LOG"
+            printf '%s | APK清理 | %s\n' "$now_str" "$apk" >> "$HISTORY_LOG"
+        fi
     done
 }
 
 clean_module_residues() {
-    local sw now_str root stale
+    local sw now_str stale
     sw=$(get_conf_val "module_residue_cleaning" "$MAIN_CONF" "false")
-    [ "$sw" != "true" ] && return 0
+    [ "$sw" = "true" ] || return 0
+
+    # 安全边界：只处理当前 AutoPurge-Pro 模块自身目录。
+    # 不扫描其他模块目录，也不触碰 modules_update / service.d / post-fs-data.d。
+    [ -n "$MODDIR" ] && [ -d "$MODDIR" ] && [ ! -L "$MODDIR" ] || {
+        log_event "$CLEAR_LOG" "[模块残留] 跳过：模块目录无效或为符号链接"
+        return 0
+    }
+
     now_str=$(date '+%Y-%m-%d %H:%M:%S')
-    # 只清理模块目录内明确的备份文件；不清空 modules_update，避免删除待安装更新。
-    for root in /data/adb/modules /data/adb/ksu/modules /data/adb/ap/modules; do
-        [ -d "$root" ] || continue
-        find "$root" -type f \( -name "*.bak" -o -name "*.backup" \) -print 2>/dev/null | while IFS= read -r stale; do
-            [ -f "$stale" ] || continue
-            if rm -f "$stale" 2>/dev/null; then
-                printf '%s %s\n' "$now_str" "[模块残留] 删除备份文件: $stale" >> "$CLEAR_LOG"
-                printf '%s | 模块残留 | %s\n' "$now_str" "$stale" >> "$HISTORY_LOG"
-            fi
-        done
-    done
-    for root in /data/adb/modules_update /data/adb/ksu/modules_update /data/adb/ap/modules_update; do
-        [ ! -d "$root" ] || printf '%s [模块残留] 保留更新暂存目录: %s\n' "$now_str" "$root" >> "$CLEAR_LOG"
+    find "$MODDIR" -type f \( -name "*.bak" -o -name "*.backup" \) -print 2>/dev/null |
+    while IFS= read -r stale; do
+        [ -f "$stale" ] && [ ! -L "$stale" ] || continue
+        case "$stale" in
+            "$MODDIR"/*) ;;
+            *) continue ;;
+        esac
+        if rm -f "$stale" 2>/dev/null; then
+            printf '%s %s\n' "$now_str" "[模块残留] 删除本模块备份文件: $stale" >> "$CLEAR_LOG"
+            printf '%s | 模块残留 | %s\n' "$now_str" "$stale" >> "$HISTORY_LOG"
+        fi
     done
 }
 
@@ -357,31 +544,50 @@ log_mt_output() {
 # ---------------------------------------------------------------- 文件整理主流程
 
 organize_user_files() {
-    local sw
+    local sw src f dest list_tmp source_tmp rc=0
+    ORG_MOVED_COUNT=0
+    ORG_FAILED_COUNT=0
     sw=$(get_conf_val "file_organize" "$MAIN_CONF" "false")
     [ "$sw" != "true" ] && [ "$1" != "force" ] && return 0
     organize_target_get
-    mkdir -p "$ORG_IMG" "$ORG_VID" "$ORG_AUD" "$ORG_APK" "$ORG_MOD" 2>/dev/null
-
-    local src
-    organize_source_dirs | while IFS= read -r src; do
-        [ -d "$src" ] || continue
-        find "$src" -maxdepth 2 -type f 2>/dev/null | while IFS= read -r f; do
-            classify_file "$f"
-        done
+    # 创建前检查已有父级；创建后再次检查，避免目标目录通过符号链接逃出存储根目录。
+    for dest in "$ORG_IMG" "$ORG_VID" "$ORG_AUD" "$ORG_APK" "$ORG_MOD"; do
+        path_has_symlink_component "$dest" "$ORG_ROOT" && return 1
     done
+    mkdir -p "$ORG_IMG" "$ORG_VID" "$ORG_AUD" "$ORG_APK" "$ORG_MOD" 2>/dev/null || return 1
+    for dest in "$ORG_IMG" "$ORG_VID" "$ORG_AUD" "$ORG_APK" "$ORG_MOD"; do
+        path_has_symlink_component "$dest" "$ORG_ROOT" && return 1
+    done
+
+    # 每个任务使用独立临时文件，避免并发扫描/整理互相覆盖。
+    list_tmp="$CONFIG_DIR/.organize_list.$$"
+    source_tmp="$CONFIG_DIR/.organize_sources.$$"
+    : > "$list_tmp" || return 1
+    organize_source_dirs > "$source_tmp" || { rm -f "$list_tmp" "$source_tmp"; return 1; }
+    while IFS= read -r src; do
+        [ -d "$src" ] || continue
+        find "$src" -maxdepth 2 -type f 2>/dev/null >> "$list_tmp" || rc=1
+    done < "$source_tmp"
+    while IFS= read -r f; do
+        [ -f "$f" ] || continue
+        classify_file "$f" || :
+    done < "$list_tmp"
+    rm -f "$list_tmp" "$source_tmp"
+    [ "$ORG_FAILED_COUNT" -eq 0 ] || rc=1
+    return "$rc"
 }
 
 scan_user_files() {
-    # 先收集完整文件列表到临时文件，再在主 shell 内逐行分类，
-    # 避免管道子 shell 造成的计数丢失。
-    local list_tmp f ext
-    list_tmp="$CONFIG_DIR/.scan_list.tmp"
-    : > "$list_tmp"
-    organize_source_dirs | while IFS= read -r src; do
+    # 独立临时文件避免并发任务互相覆盖；文件名含换行符不在当前格式支持范围内。
+    local list_tmp source_tmp src f ext scan_rc=0
+    list_tmp="$CONFIG_DIR/.scan_list.$$"
+    source_tmp="$CONFIG_DIR/.scan_sources.$$"
+    : > "$list_tmp" || return 1
+    organize_source_dirs > "$source_tmp" || { rm -f "$list_tmp" "$source_tmp"; return 1; }
+    while IFS= read -r src; do
         [ -d "$src" ] || continue
-        find "$src" -maxdepth 2 -type f 2>/dev/null
-    done > "$list_tmp"
+        find "$src" -maxdepth 2 -type f 2>/dev/null >> "$list_tmp" || scan_rc=1
+    done < "$source_tmp"
 
     local total=0 images=0 videos=0 audio=0 apks=0 archives=0
     while IFS= read -r f; do
@@ -396,31 +602,44 @@ scan_user_files() {
             zip|7z|rar|tar|gz|bz2|xz) archives=$((archives+1)) ;;
         esac
     done < "$list_tmp"
-    rm -f "$list_tmp"
-    printf '{"status":"ok","total":%s,"images":%s,"videos":%s,"audio":%s,"apks":%s,"archives":%s}\n' "$total" "$images" "$videos" "$audio" "$apks" "$archives"
+    rm -f "$list_tmp" "$source_tmp"
+    printf '{"status":"%s","total":%s,"images":%s,"videos":%s,"audio":%s,"apks":%s,"archives":%s}\n' "$([ "$scan_rc" -eq 0 ] && echo ok || echo partial)" "$total" "$images" "$videos" "$audio" "$apks" "$archives"
+    return "$scan_rc"
 }
 
 # ---------------------------------------------------------------- 清理主流程
 
 acquire_clean_lock() {
+    local owner stale_dir
     if mkdir "$CLEAN_LOCK" 2>/dev/null; then
-        date '+%s' > "$CLEAN_LOCK/ts" 2>/dev/null
+        printf '%s\n' "$$" > "$CLEAN_LOCK/pid" 2>/dev/null || {
+            rmdir "$CLEAN_LOCK" 2>/dev/null
+            return 1
+        }
         return 0
     fi
-    # 陈旧锁（超过 40 分钟）自动回收
-    local now ts
-    now=$(date '+%s')
-    ts=$(cat "$CLEAN_LOCK/ts" 2>/dev/null | tr -d ' \r\n')
-    case "$ts" in ''|*[!0-9]*) ts=0 ;; esac
-    if [ $((now - ts)) -gt 2400 ]; then
-        rm -rf "$CLEAN_LOCK"
-        mkdir "$CLEAN_LOCK" 2>/dev/null && { date '+%s' > "$CLEAN_LOCK/ts" 2>/dev/null; return 0; }
+
+    owner=$(cat "$CLEAN_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+    # 空锁目录可能正处于初始化窗口；必须保守拒绝回收。
+    case "$owner" in ''|*[!0-9]*) return 1 ;; esac
+    if reclaim_stale_task_lock "$CLEAN_LOCK" "clean"; then
+        if mkdir "$CLEAN_LOCK" 2>/dev/null; then
+            printf '%s\n' "$$" > "$CLEAN_LOCK/pid" 2>/dev/null || {
+                rmdir "$CLEAN_LOCK" 2>/dev/null
+                return 1
+            }
+            return 0
+        fi
     fi
     return 1
 }
 
 release_clean_lock() {
-    rm -rf "$CLEAN_LOCK"
+    local owner
+    owner=$(cat "$CLEAN_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+    [ "$owner" = "$$" ] || return 0
+    rm -f "$CLEAN_LOCK/pid" 2>/dev/null
+    rmdir "$CLEAN_LOCK" 2>/dev/null
 }
 
 do_cleanup() {
@@ -510,42 +729,52 @@ do_cleanup() {
         done
     fi
 
-    # 历史明细超过 1000 行时截断
-    local hist_lines
-    hist_lines=$(wc -l < "$HISTORY_LOG" 2>/dev/null | tr -d ' ')
-    case "$hist_lines" in ''|*[!0-9]*) hist_lines=0 ;; esac
-    if [ "$hist_lines" -gt 1000 ]; then
-        tail -n 1000 "$HISTORY_LOG" > "$HISTORY_LOG.tmp" 2>/dev/null && mv -f "$HISTORY_LOG.tmp" "$HISTORY_LOG"
-    fi
+    # 历史日志不再硬截断行数；统一在本轮历史同步完成后按字节轮转。
 
     local after_avail freed_kb
     after_avail=$(df -k /data 2>/dev/null | tail -n1 | awk '{print $4}')
     case "$after_avail" in ''|*[!0-9]*) after_avail="$before_avail" ;; esac
+    # df 差值只能表示 /data 可用空间变化，不能归因于本模块。
+    # 不再用文件数估算释放空间；异常/负值统一记为 0，避免制造虚假释放量。
     freed_kb=$((after_avail - before_avail))
-    if [ "$freed_kb" -le 0 ]; then
-        freed_kb=$((run_files * 64 + run_dirs * 16))
-    fi
+    [ "$freed_kb" -lt 0 ] && freed_kb=0
 
-    local prev_runs prev_freed total_runs total_freed_kb now_str
+    local prev_runs prev_freed prev_observed total_runs total_freed_kb total_observed now_str
     prev_runs=$(stats_field "total_runs" 0)
     prev_freed=$(stats_field "total_freed_kb" 0)
+    prev_observed=$(stats_field "observed_space_increase_kb" 0)
     total_runs=$((prev_runs + 1))
+    # total_freed_kb 保留旧版兼容；新 UI 使用独立字段，避免继承旧版估算历史。
     total_freed_kb=$((prev_freed + freed_kb))
+    total_observed=$((prev_observed + freed_kb))
     now_str=$(date '+%Y-%m-%d %H:%M:%S')
 
-    cat > "$STATS_JSON" <<EOF_STATS2
+    local stats_tmp="$STATS_JSON.tmp.$$"
+    cat > "$stats_tmp" <<EOF_STATS2
 {
   "total_files": $after_files,
   "total_dirs": $after_dirs,
   "total_runs": $total_runs,
   "total_freed_kb": $total_freed_kb,
+  "observed_space_increase_kb": $total_observed,
   "last_run_files": $run_files,
   "last_run_dirs": $run_dirs,
   "last_run_freed_kb": $freed_kb,
+  "last_run_space_delta_kb": $freed_kb,
+  "space_metric": "filesystem_available_delta",
   "last_clean_time": "$now_str"
 }
 EOF_STATS2
-    chmod 644 "$STATS_JSON" "$HISTORY_LOG" "$COUNTER_FILE" "$CLEAR_LOG" 2>/dev/null
+    if [ -s "$stats_tmp" ]; then
+        chmod 644 "$stats_tmp" 2>/dev/null
+        mv -f "$stats_tmp" "$STATS_JSON" || rm -f "$stats_tmp"
+    else
+        rm -f "$stats_tmp"
+    fi
+    chmod 644 "$HISTORY_LOG" "$COUNTER_FILE" "$CLEAR_LOG" 2>/dev/null
+    # 清理完成并同步历史明细后再轮转，避免影响本轮日志差量解析。
+    rotate_log_file "$CLEAR_LOG" 1048576
+    rotate_log_file "$HISTORY_LOG" 1048576
     sync_module_prop
     printf '{"status":"ok","run_files":%s,"run_dirs":%s,"freed_kb":%s,"time":"%s"}\n' "$run_files" "$run_dirs" "$freed_kb" "$now_str"
 }
@@ -707,13 +936,26 @@ get_status_json() {
     m2=$(get_conf_val "Set_minute2" "$TIMING_CONF" "00")
     w2=$(get_conf_val "Set_weekday2" "$TIMING_CONF" "*")
 
+    # 配置值进入 JSON 前统一做白名单校验，避免手工配置破坏 JSON。
+    case "$t1" in ''|*[!0-9]*) t1=0 ;; esac
+    [ "$t1" -le 23 ] 2>/dev/null || t1=0
+    case "$m1" in ''|*[!0-9]*) m1=0 ;; esac
+    [ "$m1" -le 59 ] 2>/dev/null || m1=0
+    case "$w1" in 1|2|3|4|5|6|7|'*') ;; *) w1='*' ;; esac
+    case "$t2" in ''|*[!0-9]*) t2=12 ;; esac
+    [ "$t2" -le 23 ] 2>/dev/null || t2=12
+    case "$m2" in ''|*[!0-9]*) m2=0 ;; esac
+    [ "$m2" -le 59 ] 2>/dev/null || m2=0
+    case "$w2" in 1|2|3|4|5|6|7|'*') ;; *) w2='*' ;; esac
+
     local dirs files
     dirs=$(counter_get "目录")
     files=$(counter_get "文件")
 
-    local total_runs total_freed_kb last_run_files last_run_dirs last_clean_time
+    local total_runs total_freed_kb observed_space_increase_kb last_run_files last_run_dirs last_clean_time
     total_runs=$(stats_field "total_runs" 0)
     total_freed_kb=$(stats_field "total_freed_kb" 0)
+    observed_space_increase_kb=$(stats_field "observed_space_increase_kb" 0)
     last_run_files=$(stats_field "last_run_files" 0)
     last_run_dirs=$(stats_field "last_run_dirs" 0)
     last_clean_time=$(json_escape "$(stats_time_field "尚未执行")")
@@ -791,6 +1033,7 @@ get_status_json() {
     "total_dirs": $dirs,
     "total_runs": $total_runs,
     "total_freed_kb": $total_freed_kb,
+    "observed_space_increase_kb": $observed_space_increase_kb,
     "last_run_files": $last_run_files,
     "last_run_dirs": $last_run_dirs,
     "last_clean_time": "$last_clean_time",
@@ -815,6 +1058,63 @@ get_status_json() {
 EOF_STATUS
 }
 
+preview_cleanup() {
+    init_env
+    local list_tmp path size count=0 bytes=0 shown=0 first=1 kind download_path storage_root apk_sw residue_sw
+    list_tmp="$CONFIG_DIR/.preview_list.$$"
+    : > "$list_tmp" || { echo '{"status":"error","message":"cannot create preview list"}'; return 1; }
+
+    apk_sw=$(get_conf_val "apk_cleaning" "$MAIN_CONF" "false")
+    residue_sw=$(get_conf_val "module_residue_cleaning" "$MAIN_CONF" "false")
+
+    if [ "$apk_sw" = "true" ]; then
+        storage_root=$(get_path_val storage_root "/storage/emulated/0")
+        [ -d "$storage_root" ] || storage_root="/sdcard"
+        if is_protected_system_path "$storage_root"; then
+            storage_root="/storage/emulated/0"
+        fi
+        download_path=$(get_path_val download "$storage_root/Download")
+        if path_is_child_of "$download_path" "$storage_root" && ! path_has_symlink_component "$download_path" "$storage_root" && [ -d "$download_path" ]; then
+            find "$download_path" -maxdepth 2 -type f -name "*.apk" -print 2>/dev/null >> "$list_tmp"
+        fi
+    fi
+
+    if [ "$residue_sw" = "true" ] && [ -n "$MODDIR" ] && [ -d "$MODDIR" ] && [ ! -L "$MODDIR" ]; then
+        find "$MODDIR" -type f \( -name "*.bak" -o -name "*.backup" \) -print 2>/dev/null >> "$list_tmp"
+    fi
+
+    printf '{"status":"ok","scope":"shell_managed_only","count":'
+    count=$(wc -l < "$list_tmp" 2>/dev/null | tr -d ' ')
+    case "$count" in ''|*[!0-9]*) count=0 ;; esac
+    printf '%s,"bytes":' "$count"
+
+    # 逐项统计真实逻辑大小；JSON 明细最多返回 100 条，防止大目录撑爆 WebView。
+    while IFS= read -r path; do
+        [ -f "$path" ] && [ ! -L "$path" ] || continue
+        size=$(wc -c < "$path" 2>/dev/null | tr -d ' ')
+        case "$size" in ''|*[!0-9]*) size=0 ;; esac
+        bytes=$((bytes + size))
+    done < "$list_tmp"
+    printf '%s,"items":[' "$bytes"
+
+    while IFS= read -r path; do
+        [ -f "$path" ] && [ ! -L "$path" ] || continue
+        [ "$shown" -lt 100 ] || continue
+        size=$(wc -c < "$path" 2>/dev/null | tr -d ' ')
+        case "$size" in ''|*[!0-9]*) size=0 ;; esac
+        kind=apk
+        case "$path" in "$MODDIR"/*) kind=module_backup ;; esac
+        [ "$first" -eq 1 ] || printf ','
+        first=0
+        printf '{"type":"%s","path":"%s","size":%s}' "$kind" "$(json_escape "$path")" "$size"
+        shown=$((shown + 1))
+    done < "$list_tmp"
+    rm -f "$list_tmp"
+    printf '],"shown":%s,"truncated":' "$shown"
+    if [ "$count" -gt 100 ]; then printf 'true'; else printf 'false'; fi
+    printf ',"note":"仅预览 Shell 可识别的 APK 与本模块备份文件；TimingClear/MTClear 等闭源程序的清理目标不在预览范围内，且本命令不会删除文件。"}\n'
+}
+
 get_version_json() {
     local ver code
     ver=$(get_conf_val "version" "$MODDIR/module.prop" "unknown")
@@ -826,38 +1126,70 @@ get_version_json() {
 # ---------------------------------------------------------------- 清理任务入口
 
 start_cleanup() {
-    local mode="${2:-manual}"
+    local mode="${2:-manual}" owner stale_dir pid
     init_env
-    if [ -f "$CLEAN_STATE" ] && grep -q '^running' "$CLEAN_STATE" 2>/dev/null; then
-        local old_pid=""
-        [ -f "$CLEAN_PID" ] && old_pid=$(cat "$CLEAN_PID" 2>/dev/null | tr -d ' \r\n')
-        if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+    if ! mkdir "$CLEAN_TASK_LOCK" 2>/dev/null; then
+        owner=$(cat "$CLEAN_TASK_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+        case "$owner" in ''|*[!0-9]*) echo '{"status":"already_running"}'; return 0 ;; esac
+        if ! reclaim_stale_task_lock "$CLEAN_TASK_LOCK" "__cleanup_worker"; then
             echo '{"status":"already_running"}'
             return 0
         fi
+        mkdir "$CLEAN_TASK_LOCK" 2>/dev/null || { echo '{"status":"already_running"}'; return 0; }
     fi
-    echo running > "$CLEAN_STATE"
+
     rm -f "$CLEAN_PID"
-    (
-        sh "$SCRIPT_PATH" clean "$mode" > "$CLEAN_WORKER_LOG" 2>&1
-        rc=$?
-        echo "done:$rc" > "$CLEAN_STATE"
-        rm -f "$CLEAN_PID"
-    ) </dev/null >/dev/null 2>&1 &
-    echo $! > "$CLEAN_PID"
+    echo running > "$CLEAN_STATE"
+    sh "$SCRIPT_PATH" __cleanup_worker "$mode" </dev/null >/dev/null 2>&1 &
+    pid=$!
+    printf '%s\n' "$pid" > "$CLEAN_PID" || {
+        kill "$pid" 2>/dev/null
+        rm -f "$CLEAN_STATE" "$CLEAN_PID"
+        rmdir "$CLEAN_TASK_LOCK" 2>/dev/null
+        echo '{"status":"error","message":"cannot record worker PID"}'
+        return 1
+    }
+    printf '%s\n' "$pid" > "$CLEAN_TASK_LOCK/pid" || {
+        kill "$pid" 2>/dev/null
+        rm -f "$CLEAN_STATE" "$CLEAN_PID"
+        rmdir "$CLEAN_TASK_LOCK" 2>/dev/null
+        echo '{"status":"error","message":"cannot record task lock owner"}'
+        return 1
+    }
     echo '{"status":"started"}'
+}
+
+cleanup_worker() {
+    local mode="${2:-manual}" n=0 owner rc
+    while [ "$n" -lt 10 ]; do
+        owner=$(cat "$CLEAN_TASK_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+        [ "$owner" = "$$" ] && break
+        sleep 1
+        n=$((n+1))
+    done
+    [ "$owner" = "$$" ] || return 1
+    init_env
+    run_cleanup "$mode" > "$CLEAN_WORKER_LOG" 2>&1
+    rc=$?
+    echo "done:$rc" > "$CLEAN_STATE"
+    [ "$(cat "$CLEAN_PID" 2>/dev/null | tr -d ' \r\n')" = "$$" ] && rm -f "$CLEAN_PID"
+    rm -f "$CLEAN_TASK_LOCK/pid" 2>/dev/null
+    rmdir "$CLEAN_TASK_LOCK" 2>/dev/null
+    return "$rc"
 }
 
 cleanup_status() {
     init_env
-    local state="idle" pid=""
+    local state="idle" pid="" owner
     [ -f "$CLEAN_STATE" ] && state=$(cat "$CLEAN_STATE" 2>/dev/null | tr -d ' \r\n')
     if [ "$state" = "running" ]; then
         [ -f "$CLEAN_PID" ] && pid=$(cat "$CLEAN_PID" 2>/dev/null | tr -d ' \r\n')
-        if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+        if ! task_owner_alive "$pid" "__cleanup_worker"; then
             state="done:1"
             echo "$state" > "$CLEAN_STATE"
-            rm -f "$CLEAN_PID"
+            [ "$(cat "$CLEAN_PID" 2>/dev/null | tr -d ' \r\n')" = "$pid" ] && rm -f "$CLEAN_PID"
+            owner=$(cat "$CLEAN_TASK_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+            [ "$owner" = "$pid" ] && { rm -f "$CLEAN_TASK_LOCK/pid"; rmdir "$CLEAN_TASK_LOCK" 2>/dev/null; }
         fi
     fi
     case "$state" in
@@ -871,50 +1203,82 @@ cleanup_status() {
 # ---------------------------------------------------------------- 文件任务入口
 
 start_file_task() {
-    local task="${2:-scan}"
+    local task="${2:-scan}" owner stale_dir pid
     init_env
     case "$task" in scan|organize) ;; *) echo '{"status":"error","message":"unknown task"}'; return 2 ;; esac
-    if [ -f "$FILE_TASK_STATE" ] && grep -q "^running" "$FILE_TASK_STATE" 2>/dev/null; then
-        local old_pid=""
-        [ -f "$FILE_TASK_PID" ] && old_pid=$(cat "$FILE_TASK_PID" 2>/dev/null | tr -d ' \r\n')
-        if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+    if ! mkdir "$FILE_TASK_LOCK" 2>/dev/null; then
+        owner=$(cat "$FILE_TASK_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+        case "$owner" in ''|*[!0-9]*) echo '{"status":"already_running"}'; return 0 ;; esac
+        if ! reclaim_stale_task_lock "$FILE_TASK_LOCK" "__file_worker"; then
             echo '{"status":"already_running"}'
             return 0
         fi
+        mkdir "$FILE_TASK_LOCK" 2>/dev/null || { echo '{"status":"already_running"}'; return 0; }
     fi
-    echo "running:$task" > "$FILE_TASK_STATE"
+
     rm -f "$FILE_TASK_PID" "$FILE_TASK_RESULT"
-    (
-        if [ "$task" = "scan" ]; then
-            scan_user_files > "$FILE_TASK_RESULT" 2> "$FILE_TASK_LOG"
-            rc=$?
-        else
-            organize_user_files force > "$FILE_TASK_LOG" 2>&1
-            rc=$?
-            printf '{"status":"ok","message":"文件归位任务已执行"}\n' > "$FILE_TASK_RESULT"
-        fi
-        echo "done:$task:$rc" > "$FILE_TASK_STATE"
-        rm -f "$FILE_TASK_PID"
-    ) </dev/null >/dev/null 2>&1 &
-    echo $! > "$FILE_TASK_PID"
+    echo "running:$task" > "$FILE_TASK_STATE"
+    sh "$SCRIPT_PATH" __file_worker "$task" </dev/null >/dev/null 2>&1 &
+    pid=$!
+    printf '%s\n' "$pid" > "$FILE_TASK_PID" || {
+        kill "$pid" 2>/dev/null
+        rm -f "$FILE_TASK_STATE" "$FILE_TASK_PID"
+        rmdir "$FILE_TASK_LOCK" 2>/dev/null
+        echo '{"status":"error","message":"cannot record worker PID"}'
+        return 1
+    }
+    printf '%s\n' "$pid" > "$FILE_TASK_LOCK/pid" || {
+        kill "$pid" 2>/dev/null
+        rm -f "$FILE_TASK_STATE" "$FILE_TASK_PID"
+        rmdir "$FILE_TASK_LOCK" 2>/dev/null
+        echo '{"status":"error","message":"cannot record task lock owner"}'
+        return 1
+    }
     echo '{"status":"started"}'
+}
+
+file_task_worker() {
+    local task="${2:-scan}" n=0 owner rc=0
+    while [ "$n" -lt 10 ]; do
+        owner=$(cat "$FILE_TASK_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+        [ "$owner" = "$$" ] && break
+        sleep 1
+        n=$((n+1))
+    done
+    [ "$owner" = "$$" ] || return 1
+    init_env
+    if [ "$task" = "scan" ]; then
+        scan_user_files > "$FILE_TASK_RESULT" 2> "$FILE_TASK_LOG"
+        rc=$?
+    else
+        organize_user_files force > "$FILE_TASK_LOG" 2>&1
+        rc=$?
+        printf '{"status":"%s","message":"文件归位任务结束","moved":%s,"failed":%s}\n' "$([ "$rc" -eq 0 ] && echo ok || echo error)" "$ORG_MOVED_COUNT" "$ORG_FAILED_COUNT" > "$FILE_TASK_RESULT"
+    fi
+    echo "done:$task:$rc" > "$FILE_TASK_STATE"
+    [ "$(cat "$FILE_TASK_PID" 2>/dev/null | tr -d ' \r\n')" = "$$" ] && rm -f "$FILE_TASK_PID"
+    rm -f "$FILE_TASK_LOCK/pid" 2>/dev/null
+    rmdir "$FILE_TASK_LOCK" 2>/dev/null
+    return "$rc"
 }
 
 file_task_status() {
     init_env
-    local state="idle" pid="" task="" result=""
+    local state="idle" pid="" task="" result="" owner
     [ -f "$FILE_TASK_STATE" ] && state=$(cat "$FILE_TASK_STATE" 2>/dev/null | tr -d ' \r\n')
     case "$state" in
         running:*)
             task=${state#running:}
             [ -f "$FILE_TASK_PID" ] && pid=$(cat "$FILE_TASK_PID" 2>/dev/null | tr -d ' \r\n')
-            if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
-                state="done:$task:1"
-                echo "$state" > "$FILE_TASK_STATE"
-            else
+            if task_owner_alive "$pid" "__file_worker"; then
                 printf '{"status":"running","task":"%s"}\n' "$task"
                 return 0
             fi
+            state="done:$task:1"
+            echo "$state" > "$FILE_TASK_STATE"
+            [ "$(cat "$FILE_TASK_PID" 2>/dev/null | tr -d ' \r\n')" = "$pid" ] && rm -f "$FILE_TASK_PID"
+            owner=$(cat "$FILE_TASK_LOCK/pid" 2>/dev/null | tr -d ' \r\n')
+            [ "$owner" = "$pid" ] && { rm -f "$FILE_TASK_LOCK/pid"; rmdir "$FILE_TASK_LOCK" 2>/dev/null; }
             ;;
     esac
     case "$state" in
@@ -926,30 +1290,57 @@ file_task_status() {
                 echo '{"status":"error","task":"scan"}'
             fi
             ;;
-        done:organize:0) echo '{"status":"done","task":"organize"}' ;;
+        done:organize:0)
+            result=$(cat "$FILE_TASK_RESULT" 2>/dev/null)
+            [ -n "$result" ] && printf '{"status":"done","task":"organize","result":%s}\n' "$result" || echo '{"status":"error","task":"organize"}'
+            ;;
         done:*) echo '{"status":"error","task":"unknown","message":"后台任务异常结束，请查看 FileTask.log"}' ;;
         *) echo '{"status":"idle"}' ;;
     esac
 }
 
 # ---------------------------------------------------------------- 统计维护
+# ---------------------------------------------------------------- 统计维护
 
 reset_stats() {
     init_env
-    printf "目录=0\n文件=0\n" > "$COUNTER_FILE"
-    cat > "$STATS_JSON" <<'EOF_RST'
+    local counter_tmp="$COUNTER_FILE.tmp.$$" stats_tmp="$STATS_JSON.tmp.$$"
+    printf "目录=0\n文件=0\n" > "$counter_tmp" || {
+        rm -f "$counter_tmp"
+        echo '{"status":"error","message":"counter write failed"}'
+        return 1
+    }
+    cat > "$stats_tmp" <<'EOF_RST'
 {
   "total_files": 0,
   "total_dirs": 0,
   "total_runs": 0,
   "total_freed_kb": 0,
+  "observed_space_increase_kb": 0,
   "last_run_files": 0,
   "last_run_dirs": 0,
   "last_run_freed_kb": 0,
+  "last_run_space_delta_kb": 0,
+  "space_metric": "filesystem_available_delta",
   "last_clean_time": "已重置"
 }
 EOF_RST
-    chmod 644 "$STATS_JSON" 2>/dev/null
+    if [ ! -s "$stats_tmp" ]; then
+        rm -f "$counter_tmp" "$stats_tmp"
+        echo '{"status":"error","message":"stats write failed"}'
+        return 1
+    fi
+    chmod 644 "$counter_tmp" "$stats_tmp" 2>/dev/null
+    mv -f "$counter_tmp" "$COUNTER_FILE" || {
+        rm -f "$counter_tmp" "$stats_tmp"
+        echo '{"status":"error","message":"counter replace failed"}'
+        return 1
+    }
+    mv -f "$stats_tmp" "$STATS_JSON" || {
+        rm -f "$stats_tmp"
+        echo '{"status":"error","message":"stats replace failed"}'
+        return 1
+    }
     sync_module_prop
     echo '{"status":"ok"}'
 }
@@ -981,8 +1372,20 @@ case "$1" in
     apply)
         apply_services
         ;;
+    set_config)
+        set_config_cmd "$@"
+        ;;
+    preview_cleanup)
+        preview_cleanup
+        ;;
     version)
         get_version_json
+        ;;
+    __cleanup_worker)
+        cleanup_worker "$@"
+        ;;
+    __file_worker)
+        file_task_worker "$@"
         ;;
     reset_stats)
         reset_stats
@@ -991,9 +1394,10 @@ case "$1" in
         init_env
         : > "$CLEAR_LOG"
         : > "$HISTORY_LOG"
+        rm -f "$CLEAR_LOG.1" "$HISTORY_LOG.1"
         echo '{"status":"ok"}'
         ;;
     *)
-        echo "Usage: $0 {status|clean [auto|manual|mt]|start_clean [mode]|clean_status|scan_files|organize_files|file_task_status|apply|version|reset_stats|clear_logs}"
+        echo "Usage: $0 {status|clean [auto|manual|mt]|start_clean [mode]|clean_status|scan_files|organize_files|file_task_status|set_config|preview_cleanup|apply|version|reset_stats|clear_logs}"
         ;;
 esac

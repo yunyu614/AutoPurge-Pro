@@ -1,0 +1,119 @@
+name: Validate and Build AutoPurge Pro
+
+on:
+  push:
+    branches:
+      - main
+      - "codex/**"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            echo "Checking $file"
+            sh -n "$file"
+          done < <(find source -type f \( -name '*.sh' -o -name 'Main.sh' -o -name 'service.sh' -o -name 'action.sh' -o -path 'source/Service_Config/Service_*' -o -path 'source/Configuration_File/自定义定时设置/Timing_Settings' \) -print0)
+
+      - name: Smoke test cleanup preview without deleting candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          mkdir -p "$tmp/module" "$tmp/config/名单配置" "$tmp/config/自定义定时设置" "$tmp/storage/Download"
+          printf 'apk_cleaning=false\nmodule_residue_cleaning=true\napk_cleaning=false\n' > "$tmp/config/配置.conf"
+          printf 'storage_root=%s\ndownload=%s\n' "$tmp/storage" "$tmp/storage/Download" > "$tmp/config/FilePaths.conf"
+          printf 'apk-data' > "$tmp/storage/Download/demo.apk"
+          printf 'backup-data' > "$tmp/module/sample.bak"
+          AUTOPURGE_MODDIR="$tmp/module" AUTOPURGE_CONFIG_DIR="$tmp/config" \
+            sh source/bin/autopurge_ctl.sh set_config apk_cleaning true module_residue_cleaning true > "$tmp/config-result.json"
+          test "$(grep -c '^apk_cleaning=' "$tmp/config/配置.conf")" -eq 1
+          grep -q '^apk_cleaning=true$' "$tmp/config/配置.conf"
+          AUTOPURGE_MODDIR="$tmp/module" AUTOPURGE_CONFIG_DIR="$tmp/config" \
+            sh source/bin/autopurge_ctl.sh preview_cleanup > "$tmp/preview.json"
+          python3 - "$tmp/preview.json" "$tmp/storage/Download/demo.apk" "$tmp/module/sample.bak" <<'PY'
+          import json, os, sys
+          with open(sys.argv[1], encoding="utf-8") as f:
+              result = json.load(f)
+          assert result["status"] == "ok", result
+          assert result["scope"] == "shell_managed_only", result
+          assert result["count"] == 2, result
+          assert len(result["items"]) == 2, result
+          assert {item["type"] for item in result["items"]} == {"apk", "module_backup"}, result
+          assert os.path.exists(sys.argv[2]), "preview deleted APK candidate"
+          assert os.path.exists(sys.argv[3]), "preview deleted module backup"
+          print("preview smoke test passed")
+          PY
+
+          # A lexically in-root path that traverses a symlink must not be previewed.
+          mkdir -p "$tmp/outside/Download"
+          printf 'outside-apk' > "$tmp/outside/Download/escaped.apk"
+          ln -s "$tmp/outside" "$tmp/storage/linked"
+          printf 'storage_root=%s\ndownload=%s\n' "$tmp/storage" "$tmp/storage/linked/Download" > "$tmp/config/FilePaths.conf"
+          AUTOPURGE_MODDIR="$tmp/module" AUTOPURGE_CONFIG_DIR="$tmp/config" \
+            sh source/bin/autopurge_ctl.sh preview_cleanup > "$tmp/symlink-preview.json"
+          python3 - "$tmp/symlink-preview.json" "$tmp/outside/Download/escaped.apk" <<'PY'
+          import json, os, sys
+          with open(sys.argv[1], encoding="utf-8") as f:
+              result = json.load(f)
+          assert result["status"] == "ok", result
+          assert result["count"] == 1, result
+          assert all("escaped.apk" not in item["path"] for item in result["items"]), result
+          assert os.path.exists(sys.argv[2]), "symlink target candidate was changed"
+          print("symlink preview test passed")
+          PY
+          AUTOPURGE_MODDIR="$tmp/module" AUTOPURGE_CONFIG_DIR="$tmp/config" \
+            sh source/bin/autopurge_ctl.sh set_config module_residue_cleaning false > /dev/null
+          AUTOPURGE_MODDIR="$tmp/module" AUTOPURGE_CONFIG_DIR="$tmp/config" \
+            sh source/bin/autopurge_ctl.sh clean manual > "$tmp/clean-result.json"
+          test -f "$tmp/outside/Download/escaped.apk"
+
+      - name: Check WebUI JavaScript syntax
+        run: node --check source/webroot/app.js
+
+  build-module:
+    runs-on: ubuntu-latest
+    needs: static-checks
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build installable module ZIP
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version=//p' source/module.prop | head -n 1 | tr -cd 'A-Za-z0-9._+-')"
+          test -n "$version"
+          mkdir -p dist
+          package="AutoPurge_Pro_${version}_dev_${GITHUB_SHA::7}.zip"
+          (
+            cd source
+            zip -qr "../dist/$package" . \
+              -x '*.DS_Store' '*/.DS_Store' '*.tmp' '*/.tmp'
+          )
+          unzip -l "dist/$package"
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+
+      - name: Upload installable module ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoPurge-Pro-module-${{ github.sha }}
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 14

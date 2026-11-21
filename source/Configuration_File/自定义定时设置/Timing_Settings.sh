@@ -246,6 +246,11 @@ fi
 
 BB="$(find_busybox)" || { echo "错误：未找到包含 crond applet 的 BusyBox；Cron 配置已保存但未启动"; exit 1; }
 : >> "$LOG_FILE"
+LOG_SIZE=$(wc -c < "$LOG_FILE" 2>/dev/null | tr -d ' ')
+case "$LOG_SIZE" in ''|*[!0-9]*) LOG_SIZE=0 ;; esac
+if [ "$LOG_SIZE" -gt 1048576 ]; then
+  mv -f "$LOG_FILE" "$LOG_FILE.1" 2>/dev/null && : > "$LOG_FILE"
+fi
 chmod 600 "$LOG_FILE" 2>/dev/null
 # Keep crond in foreground so its exact PID can be tracked. Redirect all
 # standard streams before backgrounding; this avoids relying on an optional
